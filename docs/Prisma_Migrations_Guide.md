@@ -57,7 +57,7 @@ npm run prisma:migrate:status
 3. Generate the new migration file **without applying it**:
 
 ```bash
-npm run prisma:migrate:dev -- --name add_descriptive_change --create-only
+npm run prisma:migrate:dev -- --name add_descriptive_change
 ```
 
 4. Open `prisma/migrations/<timestamp>_add_descriptive_change/migration.sql` and inspect all generated statements for unintended drops, type conversions, data loss, or missing constraints. Edit the SQL before applying it if necessary. **Stop** if the migration does not match the intended change.
@@ -88,7 +88,7 @@ PostgreSQL needs an exclusion constraint to reliably prevent two concurrent `CON
 2. Create the next migration **without applying it yet**:
 
 ```bash
-npm run prisma:migrate:dev -- --name prevent_booking_overlap --create-only
+npm run prisma:migrate:dev -- --name prevent_booking_overlap
 ```
 
 3. Open the newly created `prisma/migrations/<timestamp>_prevent_booking_overlap/migration.sql`. Append/review:
@@ -123,6 +123,10 @@ npm run prisma:migrate:status
 ```
 
 6. Write an integration test that submits two overlapping reservations concurrently and verifies **one succeeds and one receives a conflict**. App-level checks remain useful for friendly errors but do not replace the database constraint.
+
+**Reservation conflict error handling:** PostgreSQL SQLSTATE `23P01`, raised by the `reservation_no_confirmed_overlap` exclusion constraint, must be translated to HTTP `409 Conflict` by the reservation API.
+
+The API must return a user-friendly error message without exposing raw SQL errors. Preserve the original database error internally for diagnostics. This handling will be implemented with the reservation API in a later work package.
 
 **Do not run `migrate dev` against a production database.** It uses a shadow database for drift detection and is intended for development.
 

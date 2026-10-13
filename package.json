@@ -12,9 +12,10 @@
     "prisma:validate": "prisma validate",
     "prisma:format": "prisma format",
     "prisma:generate": "prisma generate",
-    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:dev": "prisma migrate dev --create-only",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:migrate:status": "prisma migrate status"
+    "prisma:migrate:status": "prisma migrate status",
+    "test:booking-integrity": "tsx scripts/verify-booking-integrity.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
