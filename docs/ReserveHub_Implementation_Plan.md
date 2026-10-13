@@ -16,14 +16,14 @@ This document supersedes **ReserveHub Requirements and Implementation Plan v2.0*
 
 The assessment PDF describes an organization struggling with informal reservations, overlapping time slots, and unclear shared-resource availability. It asks for a practical, reliable full-stack solution and leaves the feature interpretation and architecture to the candidate. In particular, the company specifies:
 
-| Source | Company requirement or expectation **[ASSESSMENT]** |
-|---|---|
-| Business scenario | Centralized management of shared resources and their reservations; clear usage and availability |
-| Technical expectations | **Next.js App Router, TypeScript, PostgreSQL, Git/GitHub**, persistent database, local run capability |
-| Scope | A **focused** system, not an enterprise platform; sound engineering decisions, reliability and usability |
-| Submission | Source code in GitHub with a setup README, a **3–5-minute demonstration video**, and a shareable ER diagram |
-| Evaluation | Interpretation, functionality, reliability, architecture, data model, code quality, usability, and ability to explain decisions |
-| Deadline | **15 October 2026 at 11:59 PM**, Sri Lanka time |
+| Source                 | Company requirement or expectation **[ASSESSMENT]**                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Business scenario      | Centralized management of shared resources and their reservations; clear usage and availability                                 |
+| Technical expectations | **Next.js App Router, TypeScript, PostgreSQL, Git/GitHub**, persistent database, local run capability                           |
+| Scope                  | A **focused** system, not an enterprise platform; sound engineering decisions, reliability and usability                        |
+| Submission             | Source code in GitHub with a setup README, a **3–5-minute demonstration video**, and a shareable ER diagram                     |
+| Evaluation             | Interpretation, functionality, reliability, architecture, data model, code quality, usability, and ability to explain decisions |
+| Deadline               | **15 October 2026 at 11:59 PM**, Sri Lanka time                                                                                 |
 
 **[DESIGN DECISION]** marks requirements we chose to satisfy the scenario; the company did **not** explicitly demand registration, JWT, specific user roles, specific resource types, or these exact endpoint names. **[FUTURE]** marks excluded functionality.
 
@@ -67,23 +67,23 @@ A new user should be able to register, log in, add a room, book it, and observe 
 
 **There are no application roles and no Admin account.** `User` has no `role` property or enum. Authentication is JWT-based, and authorization is limited to identifying the current user and enforcing reservation ownership.
 
-| Action | Visitor (not logged in) | Any authenticated user | Another reservation's creator? |
-|---|:---:|:---:|:---:|
-| Register/login | Yes | Yes | N/A |
-| Access dashboard, resources, reservations | No | Yes | Yes |
-| Add resource | No | Yes | Yes |
-| View any resource | No | Yes | Yes |
-| Edit resource details | No | Yes | Yes |
-| Delete an unused resource | No | Yes | Yes |
-| Deactivate/reactivate eligible resource | No | Yes | Yes |
-| See who added resources | No | Yes | Yes |
-| Check availability | No | Yes | Yes |
-| Create a reservation for self | No | Yes | Yes |
-| View all users' reservations and creator names | No | Yes | Yes |
-| Edit a **future reservation created by self** | No | Yes | **No** for other user's booking |
-| Cancel a **future reservation created by self** | No | Yes | **No** for other user's booking |
-| Edit/cancel ongoing, completed or cancelled booking | No | No | No |
-| Permanently delete a reservation | No | No | No |
+| Action                                              | Visitor (not logged in) | Any authenticated user | Another reservation's creator?  |
+| --------------------------------------------------- | :---------------------: | :--------------------: | :-----------------------------: |
+| Register/login                                      |           Yes           |          Yes           |               N/A               |
+| Access dashboard, resources, reservations           |           No            |          Yes           |               Yes               |
+| Add resource                                        |           No            |          Yes           |               Yes               |
+| View any resource                                   |           No            |          Yes           |               Yes               |
+| Edit resource details                               |           No            |          Yes           |               Yes               |
+| Delete an unused resource                           |           No            |          Yes           |               Yes               |
+| Deactivate/reactivate eligible resource             |           No            |          Yes           |               Yes               |
+| See who added resources                             |           No            |          Yes           |               Yes               |
+| Check availability                                  |           No            |          Yes           |               Yes               |
+| Create a reservation for self                       |           No            |          Yes           |               Yes               |
+| View all users' reservations and creator names      |           No            |          Yes           |               Yes               |
+| Edit a **future reservation created by self**       |           No            |          Yes           | **No** for other user's booking |
+| Cancel a **future reservation created by self**     |           No            |          Yes           | **No** for other user's booking |
+| Edit/cancel ongoing, completed or cancelled booking |           No            |           No           |               No                |
+| Permanently delete a reservation                    |           No            |           No           |               No                |
 
 **Security invariant:** A hidden or disabled button is a UI convenience, **not** authorization. The API verifies the JWT and checks `reservation.userId === authenticatedUser.id` for every edit and cancel request. No authenticated user can override this rule.
 
@@ -99,12 +99,12 @@ A new user should be able to register, log in, add a room, book it, and observe 
 
 **Inputs:**
 
-| Field | Rule |
-|---|---|
-| `name` | Required, trimmed, 2–100 characters |
-| `email` | Required, trimmed, lowercase, valid email, up to 254 characters, unique |
-| `password` | Required, 8–72 UTF-8 bytes (appropriate bcrypt input length) |
-| `confirmPassword` | Required in the UI, must match; not stored or passed into Prisma |
+| Field             | Rule                                                                    |
+| ----------------- | ----------------------------------------------------------------------- |
+| `name`            | Required, trimmed, 2–100 characters                                     |
+| `email`           | Required, trimmed, lowercase, valid email, up to 254 characters, unique |
+| `password`        | Required, 8–72 UTF-8 bytes (appropriate bcrypt input length)            |
+| `confirmPassword` | Required in the UI, must match; not stored or passed into Prisma        |
 
 Server validates with Zod, hashes the password with `bcryptjs`, creates one `User`, and returns success; user is directed to the login page. Registration does not assign a role and does not automatically create a session.
 
@@ -172,13 +172,13 @@ Display all resources, including inactive ones with clearly marked status. Show 
 
 **Page:** `/resources/new` or a dialog · **Endpoint:** `POST /api/resources`.
 
-| Field | Validation |
-|---|---|
-| `name` | Required, trimmed, 2–100 characters |
-| `type` | Required; `MEETING_ROOM` or `EQUIPMENT` |
-| `location` | Required, trimmed, 2–120 characters |
-| `capacity` | Optional positive integer (mainly useful for rooms) |
-| `description` | Optional, up to 500 characters |
+| Field         | Validation                                          |
+| ------------- | --------------------------------------------------- |
+| `name`        | Required, trimmed, 2–100 characters                 |
+| `type`        | Required; `MEETING_ROOM` or `EQUIPMENT`             |
+| `location`    | Required, trimmed, 2–120 characters                 |
+| `capacity`    | Optional positive integer (mainly useful for rooms) |
+| `description` | Optional, up to 500 characters                      |
 
 The server assigns `createdById` from the authenticated user; `isActive` defaults to `true`; timestamps are generated automatically. Repeated names are permitted (two distinct rooms may be named similarly); a resource is identified by its ID.
 
@@ -328,38 +328,38 @@ Show total active resources, confirmed upcoming bookings, today's confirmed book
 
 ## 8. Core business rules — frozen
 
-| ID | Rule | Outcome / failure |
-|---|---|---|
-| BR-01 | Creating/changing data requires a valid JWT | Missing/invalid cookie → 401 |
-| BR-02 | All users have the same resource rights | No role or resource-creator restriction |
-| BR-03 | Creator IDs come from JWT, not request data | Spoofed `userId` / `createdById` ignored or rejected |
-| BR-04 | Resources must be active to accept bookings | Booking inactive resource → 409 |
-| BR-05 | Reservation start in future; end after start | Invalid interval → 400 |
-| BR-06 | Confirmed intervals for same resource may not overlap | Conflict → 409 even under concurrent requests |
-| BR-07 | Anyone authenticated can **view** all reservations | Listing and detail allowed |
-| BR-08 | Only creator can **edit/cancel** their reservation | Non-owner edit/cancel → 403 |
-| BR-09 | Only future confirmed reservations editable/cancellable | Ongoing/past/cancelled → 409 |
-| BR-10 | Cancelled bookings don't block future availability | Cancelled reservation retained |
-| BR-11 | Hard-delete resource only if **no reservation records of any status** | Resource with history → 409 |
-| BR-12 | Deactivate resource only when **no ongoing/future confirmed booking** | Existing `endAt > now` → 409 |
-| BR-13 | Inactive resources and cancelled bookings remain visible | History retained |
-| BR-14 | Completed status is derived from time; not persisted | No scheduled status update |
+| ID    | Rule                                                                  | Outcome / failure                                    |
+| ----- | --------------------------------------------------------------------- | ---------------------------------------------------- |
+| BR-01 | Creating/changing data requires a valid JWT                           | Missing/invalid cookie → 401                         |
+| BR-02 | All users have the same resource rights                               | No role or resource-creator restriction              |
+| BR-03 | Creator IDs come from JWT, not request data                           | Spoofed `userId` / `createdById` ignored or rejected |
+| BR-04 | Resources must be active to accept bookings                           | Booking inactive resource → 409                      |
+| BR-05 | Reservation start in future; end after start                          | Invalid interval → 400                               |
+| BR-06 | Confirmed intervals for same resource may not overlap                 | Conflict → 409 even under concurrent requests        |
+| BR-07 | Anyone authenticated can **view** all reservations                    | Listing and detail allowed                           |
+| BR-08 | Only creator can **edit/cancel** their reservation                    | Non-owner edit/cancel → 403                          |
+| BR-09 | Only future confirmed reservations editable/cancellable               | Ongoing/past/cancelled → 409                         |
+| BR-10 | Cancelled bookings don't block future availability                    | Cancelled reservation retained                       |
+| BR-11 | Hard-delete resource only if **no reservation records of any status** | Resource with history → 409                          |
+| BR-12 | Deactivate resource only when **no ongoing/future confirmed booking** | Existing `endAt > now` → 409                         |
+| BR-13 | Inactive resources and cancelled bookings remain visible              | History retained                                     |
+| BR-14 | Completed status is derived from time; not persisted                  | No scheduled status update                           |
 
 **Examples:**
 
-| Situation | Permitted? | Explanation |
-|---|---|---|
-| Alice books Room A 09:00–10:00, Bob books 10:00–11:00 | **Yes** | Adjacent intervals |
-| Alice books 09:00–10:00, Bob tries 09:30–10:30 | **No** | Overlap |
-| Bob opens Alice's booking details | **Yes** | All bookings viewable |
-| Bob edits/cancels Alice's future booking | **No** | Creator-only mutation |
-| Alice cancels her future confirmed booking | **Yes** | Slot opens again |
-| Alice edits her booking after it has started | **No** | Ongoing/past immutable |
-| Bob edits a room originally added by Alice | **Yes** | Collaborative resource maintenance |
-| Bob deletes a room never reserved | **Yes** | No history |
-| Bob deletes room with a cancelled reservation | **No** | Still has history |
-| Bob deactivates resource with completed bookings only | **Yes** | No ongoing/future confirmed booking |
-| Bob deactivates room during an ongoing booking | **No** | Active booking protected |
+| Situation                                             | Permitted? | Explanation                         |
+| ----------------------------------------------------- | ---------- | ----------------------------------- |
+| Alice books Room A 09:00–10:00, Bob books 10:00–11:00 | **Yes**    | Adjacent intervals                  |
+| Alice books 09:00–10:00, Bob tries 09:30–10:30        | **No**     | Overlap                             |
+| Bob opens Alice's booking details                     | **Yes**    | All bookings viewable               |
+| Bob edits/cancels Alice's future booking              | **No**     | Creator-only mutation               |
+| Alice cancels her future confirmed booking            | **Yes**    | Slot opens again                    |
+| Alice edits her booking after it has started          | **No**     | Ongoing/past immutable              |
+| Bob edits a room originally added by Alice            | **Yes**    | Collaborative resource maintenance  |
+| Bob deletes a room never reserved                     | **Yes**    | No history                          |
+| Bob deletes room with a cancelled reservation         | **No**     | Still has history                   |
+| Bob deactivates resource with completed bookings only | **Yes**    | No ongoing/future confirmed booking |
+| Bob deactivates room during an ongoing booking        | **No**     | Active booking protected            |
 
 ---
 
@@ -387,39 +387,39 @@ RESOURCE (1) ─ BOOKED FOR ── (N) RESERVATION
 
 **USER**
 
-| Attribute | Physical type / rule |
-|---|---|
+| Attribute             | Physical type / rule                                    |
+| --------------------- | ------------------------------------------------------- |
 | `id` (`userId` in ER) | UUID/string primary key (Prisma `@id @default(uuid())`) |
-| `name` | String; required |
-| `email` | String; required, unique, normalized lowercase |
-| `passwordHash` | String; bcrypt hash; never returned in API |
-| `createdAt` | `DateTime`, generated |
+| `name`                | String; required                                        |
+| `email`               | String; required, unique, normalized lowercase          |
+| `passwordHash`        | String; bcrypt hash; never returned in API              |
+| `createdAt`           | `DateTime`, generated                                   |
 
 **RESOURCE**
 
-| Attribute | Physical type / rule |
-|---|---|
-| `id` (`resourceId` in ER) | UUID/string primary key |
-| `name` | Required string |
-| `type` | Enum `MEETING_ROOM` / `EQUIPMENT` |
-| `location` | Required string |
-| `capacity` | Optional positive integer |
-| `description` | Optional string |
-| `isActive` | Boolean, default `true` |
-| `createdById` | FK → `User.id`, required, `onDelete: Restrict` |
-| `createdAt`, `updatedAt` | Automatically maintained timestamps |
+| Attribute                 | Physical type / rule                           |
+| ------------------------- | ---------------------------------------------- |
+| `id` (`resourceId` in ER) | UUID/string primary key                        |
+| `name`                    | Required string                                |
+| `type`                    | Enum `MEETING_ROOM` / `EQUIPMENT`              |
+| `location`                | Required string                                |
+| `capacity`                | Optional positive integer                      |
+| `description`             | Optional string                                |
+| `isActive`                | Boolean, default `true`                        |
+| `createdById`             | FK → `User.id`, required, `onDelete: Restrict` |
+| `createdAt`, `updatedAt`  | Automatically maintained timestamps            |
 
 **RESERVATION**
 
-| Attribute | Physical type / rule |
-|---|---|
-| `id` (`reservationId` in ER) | UUID/string primary key |
-| `userId` | FK → `User.id`, required, `onDelete: Restrict` |
-| `resourceId` | FK → `Resource.id`, required, `onDelete: Restrict` |
-| `purpose` | Required string |
-| `startAt`, `endAt` | `DateTime` with PostgreSQL `@db.Timestamptz(3)` |
-| `status` | Enum `CONFIRMED` / `CANCELLED`, default `CONFIRMED` |
-| `createdAt` | Generated timestamp |
+| Attribute                    | Physical type / rule                                |
+| ---------------------------- | --------------------------------------------------- |
+| `id` (`reservationId` in ER) | UUID/string primary key                             |
+| `userId`                     | FK → `User.id`, required, `onDelete: Restrict`      |
+| `resourceId`                 | FK → `Resource.id`, required, `onDelete: Restrict`  |
+| `purpose`                    | Required string                                     |
+| `startAt`, `endAt`           | `DateTime` with PostgreSQL `@db.Timestamptz(3)`     |
+| `status`                     | Enum `CONFIRMED` / `CANCELLED`, default `CONFIRMED` |
+| `createdAt`                  | Generated timestamp                                 |
 
 **Recommended indexes:** Resource `createdById` and `isActive`; Reservation `(resourceId,startAt)`, `(userId,startAt)`, `(status,startAt)`; User unique `email`. PostgreSQL also manages an index for the reservation exclusion constraint.
 
@@ -503,7 +503,7 @@ model Reservation {
 Two confirmed bookings of the same resource overlap when:
 
 ```typescript
-existing.startAt < requested.endAt && existing.endAt > requested.startAt
+existing.startAt < requested.endAt && existing.endAt > requested.startAt;
 ```
 
 Intervals touching at their boundaries do not overlap. A cancelled booking must not block future slots. A reschedule excludes the current reservation row from the preliminary lookup.
@@ -552,26 +552,26 @@ The GiST constraint is still required for booking-to-booking concurrency. A UI-o
 
 All endpoints use JSON except `204 No Content`; authenticated endpoints require the signed cookie. Bracketed segments are Next.js App Router dynamic segments.
 
-| Method | Route | Access | Behavior | Priority |
-|---|---|---|---|---|
-| `POST` | `/api/auth/register` | Public | Register | P0 |
-| `POST` | `/api/auth/login` | Public | JWT login/cookie | P0 |
-| `POST` | `/api/auth/logout` | Session | Clear cookie | P0 |
-| `GET` | `/api/auth/me` | Session | Current public user profile | P0 |
-| `GET` | `/api/resources` | Session | List all resources | P0 |
-| `POST` | `/api/resources` | Session | Create resource | P0 |
-| `GET` | `/api/resources/[resourceId]` | Session | Resource details | P0 |
-| `PATCH` | `/api/resources/[resourceId]` | Session | Edit/activate/deactivate resource | P0 |
-| `DELETE` | `/api/resources/[resourceId]` | Session | Delete only if never reserved | P0 |
-| `GET` | `/api/resources/[resourceId]/availability` | Session | Check interval availability | P0 |
-| `GET` | `/api/reservations` | Session | All/Mine bookings (`scope=all\|mine`) | P0 |
-| `POST` | `/api/reservations` | Session | Create booking for current user | P0 |
-| `GET` | `/api/reservations/[reservationId]` | Session | View any booking | P0 |
-| `PATCH` | `/api/reservations/[reservationId]` | **Creator only** | Change purpose/time of future booking | P0 |
-| `POST` | `/api/reservations/[reservationId]/cancel` | **Creator only** | Cancel future booking | P0 |
-| `GET` | `/api/dashboard` | Session | Small stats summary | P1 |
+| Method   | Route                                      | Access           | Behavior                              | Priority |
+| -------- | ------------------------------------------ | ---------------- | ------------------------------------- | -------- |
+| `POST`   | `/api/auth/register`                       | Public           | Register                              | P0       |
+| `POST`   | `/api/auth/login`                          | Public           | JWT login/cookie                      | P0       |
+| `POST`   | `/api/auth/logout`                         | Session          | Clear cookie                          | P0       |
+| `GET`    | `/api/auth/me`                             | Session          | Current public user profile           | P0       |
+| `GET`    | `/api/resources`                           | Session          | List all resources                    | P0       |
+| `POST`   | `/api/resources`                           | Session          | Create resource                       | P0       |
+| `GET`    | `/api/resources/[resourceId]`              | Session          | Resource details                      | P0       |
+| `PATCH`  | `/api/resources/[resourceId]`              | Session          | Edit/activate/deactivate resource     | P0       |
+| `DELETE` | `/api/resources/[resourceId]`              | Session          | Delete only if never reserved         | P0       |
+| `GET`    | `/api/resources/[resourceId]/availability` | Session          | Check interval availability           | P0       |
+| `GET`    | `/api/reservations`                        | Session          | All/Mine bookings (`scope=all\|mine`) | P0       |
+| `POST`   | `/api/reservations`                        | Session          | Create booking for current user       | P0       |
+| `GET`    | `/api/reservations/[reservationId]`        | Session          | View any booking                      | P0       |
+| `PATCH`  | `/api/reservations/[reservationId]`        | **Creator only** | Change purpose/time of future booking | P0       |
+| `POST`   | `/api/reservations/[reservationId]/cancel` | **Creator only** | Cancel future booking                 | P0       |
+| `GET`    | `/api/dashboard`                           | Session          | Small stats summary                   | P1       |
 
-**No** `DELETE /api/reservations` endpoint. **No** admin routes or role arguments. `scope=mine` is a filter and not a separate permission. Queries returning reservations should include a *limited nested user selection* such as `user: { select: { id: true, name: true } }`, not a raw User row containing passwordHash.
+**No** `DELETE /api/reservations` endpoint. **No** admin routes or role arguments. `scope=mine` is a filter and not a separate permission. Queries returning reservations should include a _limited nested user selection_ such as `user: { select: { id: true, name: true } }`, not a raw User row containing passwordHash.
 
 ### 11.1 Representative requests
 
@@ -622,18 +622,18 @@ These JSON examples show request shapes; the specific dates are illustrative and
 
 ## 12. Frontend page and screen specification
 
-| Screen | Route | Must show / support |
-|---|---|---|
-| Login | `/login` | Email/password, validation, invalid credentials message |
-| Registration | `/register` | Name/email/password/confirm, duplicate validation |
-| Dashboard | `/dashboard` | Summary cards (P1); may redirect to Resources in P0 |
-| Resources list | `/resources` | Active/inactive items, creator name, Add Resource, view/edit/deactivate/delete eligible |
-| New resource | `/resources/new` | Validated form; all users |
-| Resource detail | `/resources/[resourceId]` | Full details, creator, availability, resource reservations |
-| Edit resource | `/resources/[resourceId]/edit` | Prefilled form; all users |
-| Reservations list | `/reservations` | All records, creator name, status, All/Mine filter |
-| New reservation | `/reservations/new` | Resource picker, start/end, purpose, availability feedback |
-| Reservation detail | `/reservations/[reservationId]` | Read-only for non-owners; edit/cancel for owner + future confirmed |
+| Screen             | Route                           | Must show / support                                                                     |
+| ------------------ | ------------------------------- | --------------------------------------------------------------------------------------- |
+| Login              | `/login`                        | Email/password, validation, invalid credentials message                                 |
+| Registration       | `/register`                     | Name/email/password/confirm, duplicate validation                                       |
+| Dashboard          | `/dashboard`                    | Summary cards (P1); may redirect to Resources in P0                                     |
+| Resources list     | `/resources`                    | Active/inactive items, creator name, Add Resource, view/edit/deactivate/delete eligible |
+| New resource       | `/resources/new`                | Validated form; all users                                                               |
+| Resource detail    | `/resources/[resourceId]`       | Full details, creator, availability, resource reservations                              |
+| Edit resource      | `/resources/[resourceId]/edit`  | Prefilled form; all users                                                               |
+| Reservations list  | `/reservations`                 | All records, creator name, status, All/Mine filter                                      |
+| New reservation    | `/reservations/new`             | Resource picker, start/end, purpose, availability feedback                              |
+| Reservation detail | `/reservations/[reservationId]` | Read-only for non-owners; edit/cancel for owner + future confirmed                      |
 
 **UI layout notes:**
 
@@ -649,11 +649,11 @@ These JSON examples show request shapes; the specific dates are illustrative and
 
 ### 12.1 Example reservation table
 
-| Resource | Reserved by | Start | End | Status | Actions for signed-in user |
-|---|---|---|---|---|---|
-| Room A | Alice | Tomorrow, 9:00 | Tomorrow, 10:00 | Upcoming | Alice: Edit/Cancel; others: View |
-| Projector A | Bob | Today, 10:00 | Today, 11:00 | Completed | View |
-| Room B | Alice | Tomorrow, 13:00 | Tomorrow, 14:00 | Cancelled | View |
+| Resource    | Reserved by | Start           | End             | Status    | Actions for signed-in user       |
+| ----------- | ----------- | --------------- | --------------- | --------- | -------------------------------- |
+| Room A      | Alice       | Tomorrow, 9:00  | Tomorrow, 10:00 | Upcoming  | Alice: Edit/Cancel; others: View |
+| Projector A | Bob         | Today, 10:00    | Today, 11:00    | Completed | View                             |
+| Room B      | Alice       | Tomorrow, 13:00 | Tomorrow, 14:00 | Cancelled | View                             |
 
 ### 12.2 Responsiveness and accessibility
 
@@ -663,18 +663,18 @@ Labels must match inputs, keyboard focus must be visible, dialogs should have ac
 
 ## 13. Application architecture and stack
 
-| Layer | Choice | Reason |
-|---|---|---|
-| Full stack | **Next.js App Router** | Required; one deployable codebase |
-| Language | TypeScript | Required; end-to-end types |
-| UI styling | Tailwind CSS + basic shadcn/ui | Faster consistent components |
-| Forms and validation | React Hook Form (optional) + Zod | Practical form validation and shared rules |
-| Auth | `jose`, `bcryptjs`, HTTP-only cookie | Simple, explainable JWT flow |
-| Database | PostgreSQL via Neon | Required; persistent and familiar |
-| ORM | Prisma | Familiar schema, queries, migrations |
-| Tests | Jest (or Vitest if simpler), targeted API tests | Core business and security checks |
-| Version control | Git + GitHub | Required |
-| Hosting | Local is mandatory; Vercel is optional | Assessment explicitly requires local run capability |
+| Layer                | Choice                                          | Reason                                              |
+| -------------------- | ----------------------------------------------- | --------------------------------------------------- |
+| Full stack           | **Next.js App Router**                          | Required; one deployable codebase                   |
+| Language             | TypeScript                                      | Required; end-to-end types                          |
+| UI styling           | Tailwind CSS + basic shadcn/ui                  | Faster consistent components                        |
+| Forms and validation | React Hook Form (optional) + Zod                | Practical form validation and shared rules          |
+| Auth                 | `jose`, `bcryptjs`, HTTP-only cookie            | Simple, explainable JWT flow                        |
+| Database             | PostgreSQL via Neon                             | Required; persistent and familiar                   |
+| ORM                  | Prisma                                          | Familiar schema, queries, migrations                |
+| Tests                | Jest (or Vitest if simpler), targeted API tests | Core business and security checks                   |
+| Version control      | Git + GitHub                                    | Required                                            |
+| Hosting              | Local is mandatory; Vercel is optional          | Assessment explicitly requires local run capability |
 
 ### 13.1 Data flow
 
@@ -776,22 +776,22 @@ The developer previously experienced blocked direct connections on PostgreSQL po
 
 ## 15. Non-functional requirements
 
-| ID | Requirement | Validation |
-|---|---|---|
-| NFR-01 | Data survives restart | Register/create/refresh and re-read |
+| ID     | Requirement                                                | Validation                            |
+| ------ | ---------------------------------------------------------- | ------------------------------------- |
+| NFR-01 | Data survives restart                                      | Register/create/refresh and re-read   |
 | NFR-02 | Same-resource overlap is impossible for confirmed bookings | Database constraint + concurrent test |
-| NFR-03 | Server validates all mutations | Bad requests return 400/409 |
-| NFR-04 | Protected APIs require JWT | Missing/expired cookie → 401 |
-| NFR-05 | Creator-only reservation changes | Other account → 403 |
-| NFR-06 | Resource deletion preserves reservation history | FK restrict + 409 |
-| NFR-07 | Resource deactivation preserves ongoing/future bookings | 409 on active bookings |
-| NFR-08 | Consistent UTC timestamps and Colombo display | Manually verify conversion |
-| NFR-09 | UI works on laptop and phone widths | Manual layout check |
-| NFR-10 | Clear errors/loading/empty states | Manual acceptance |
-| NFR-11 | No secrets committed or logged | `.gitignore` + source review |
-| NFR-12 | Local setup is reproducible using README | Clean install smoke test |
-| NFR-13 | Business rules reside in server modules | Code review |
-| NFR-14 | Data design reflects submitted Chen ER | Schema-to-diagram verification |
+| NFR-03 | Server validates all mutations                             | Bad requests return 400/409           |
+| NFR-04 | Protected APIs require JWT                                 | Missing/expired cookie → 401          |
+| NFR-05 | Creator-only reservation changes                           | Other account → 403                   |
+| NFR-06 | Resource deletion preserves reservation history            | FK restrict + 409                     |
+| NFR-07 | Resource deactivation preserves ongoing/future bookings    | 409 on active bookings                |
+| NFR-08 | Consistent UTC timestamps and Colombo display              | Manually verify conversion            |
+| NFR-09 | UI works on laptop and phone widths                        | Manual layout check                   |
+| NFR-10 | Clear errors/loading/empty states                          | Manual acceptance                     |
+| NFR-11 | No secrets committed or logged                             | `.gitignore` + source review          |
+| NFR-12 | Local setup is reproducible using README                   | Clean install smoke test              |
+| NFR-13 | Business rules reside in server modules                    | Code review                           |
+| NFR-14 | Data design reflects submitted Chen ER                     | Schema-to-diagram verification        |
 
 ---
 
@@ -799,30 +799,30 @@ The developer previously experienced blocked direct connections on PostgreSQL po
 
 **P0 items are required.** P1 items may be skipped if time is short.
 
-| Task | Priority | Implementation | Definition of done | Depends on |
-|---|---|---|---|---|
-| **T-01** | P0 | Create Next.js App Router TypeScript project, Tailwind, shadcn/ui | Project runs locally | — |
-| **T-02** | P0 | Set up repository, environment example, lint/build commands | Clean Git state, no secrets | T-01 |
-| **T-03** | P0 | Configure Prisma/Neon; test DB connection | Migration and round-trip query work | T-01 |
-| **T-04** | P0 | Implement 3 database entities/enums/relations | Schema and Chen ER agree | T-03 |
-| **T-05** | P0 | Apply PostgreSQL no-overlap and FK constraints | DB rejects overlapping confirmed writes | T-04 |
-| **T-06** | P0 | Build JWT/password helpers and validation | Sign/verify/hash unit tests | T-04 |
-| **T-07** | P0 | Build register/login/logout/me APIs and UI | Two independent users log in | T-06 |
-| **T-08** | P0 | Protected shell and `requireUser` helpers | Anonymous requests blocked | T-07 |
-| **T-09** | P0 | Resource list/detail/create service/API/UI | Any signed-in user can add and view | T-08 |
-| **T-10** | P0 | Resource edit, deactivate/reactivate, safe hard-delete | History/deactivation rules pass tests | T-09 |
-| **T-11** | P0 | Availability lookup | Correct result for occupied/free intervals | T-05, T-09 |
-| **T-12** | P0 | Reservation create service/API/UI | Slot booked under signed-in user | T-11 |
-| **T-13** | P0 | List/detail All/Mine reservations with creator display | Any user can read; private fields hidden | T-12 |
-| **T-14** | P0 | Owner-only edit and cancel API/UI | Other owner gets 403; future rule enforced | T-13 |
-| **T-15** | P0 | Race-safety and edge-case tests | One winner on concurrent same-slot booking | T-14 |
-| **T-16** | P0 | Error states, responsive polish, input usability | Complete journeys usable | T-15 |
-| **T-17** | P0 | README, ER upload/link, verification checklist | New developer can run app | T-16 |
-| **T-18** | P0 | Record 3–5-minute demonstration | Video clearly illustrates core design | T-17 |
-| **T-19** | P0 | Submit correct GitHub/video/ER links | Submission form completed on time | T-18 |
-| **T-20** | P1 | Dashboard cards and upcoming reservations | Summary accurate | T-13 |
-| **T-21** | P1 | Resource and reservation filters/search | Search works with no extra backend complexity | T-13 |
-| **T-22** | P1 | Additional tests / styling | Improves confidence without delaying submission | T-15 |
+| Task     | Priority | Implementation                                                    | Definition of done                              | Depends on |
+| -------- | -------- | ----------------------------------------------------------------- | ----------------------------------------------- | ---------- |
+| **T-01** | P0       | Create Next.js App Router TypeScript project, Tailwind, shadcn/ui | Project runs locally                            | —          |
+| **T-02** | P0       | Set up repository, environment example, lint/build commands       | Clean Git state, no secrets                     | T-01       |
+| **T-03** | P0       | Configure Prisma/Neon; test DB connection                         | Migration and round-trip query work             | T-01       |
+| **T-04** | P0       | Implement 3 database entities/enums/relations                     | Schema and Chen ER agree                        | T-03       |
+| **T-05** | P0       | Apply PostgreSQL no-overlap and FK constraints                    | DB rejects overlapping confirmed writes         | T-04       |
+| **T-06** | P0       | Build JWT/password helpers and validation                         | Sign/verify/hash unit tests                     | T-04       |
+| **T-07** | P0       | Build register/login/logout/me APIs and UI                        | Two independent users log in                    | T-06       |
+| **T-08** | P0       | Protected shell and `requireUser` helpers                         | Anonymous requests blocked                      | T-07       |
+| **T-09** | P0       | Resource list/detail/create service/API/UI                        | Any signed-in user can add and view             | T-08       |
+| **T-10** | P0       | Resource edit, deactivate/reactivate, safe hard-delete            | History/deactivation rules pass tests           | T-09       |
+| **T-11** | P0       | Availability lookup                                               | Correct result for occupied/free intervals      | T-05, T-09 |
+| **T-12** | P0       | Reservation create service/API/UI                                 | Slot booked under signed-in user                | T-11       |
+| **T-13** | P0       | List/detail All/Mine reservations with creator display            | Any user can read; private fields hidden        | T-12       |
+| **T-14** | P0       | Owner-only edit and cancel API/UI                                 | Other owner gets 403; future rule enforced      | T-13       |
+| **T-15** | P0       | Race-safety and edge-case tests                                   | One winner on concurrent same-slot booking      | T-14       |
+| **T-16** | P0       | Error states, responsive polish, input usability                  | Complete journeys usable                        | T-15       |
+| **T-17** | P0       | README, ER upload/link, verification checklist                    | New developer can run app                       | T-16       |
+| **T-18** | P0       | Record 3–5-minute demonstration                                   | Video clearly illustrates core design           | T-17       |
+| **T-19** | P0       | Submit correct GitHub/video/ER links                              | Submission form completed on time               | T-18       |
+| **T-20** | P1       | Dashboard cards and upcoming reservations                         | Summary accurate                                | T-13       |
+| **T-21** | P1       | Resource and reservation filters/search                           | Search works with no extra backend complexity   | T-13       |
+| **T-22** | P1       | Additional tests / styling                                        | Improves confidence without delaying submission | T-15       |
 
 ### 16.1 Work packages and dependency path
 
@@ -1011,26 +1011,26 @@ README.md
 - [ ] Exact email address matches the original CV/application email.
 - [ ] Verify all links in a browser not signed into your personal account.
 
-**Remember:** A local `.drawio` file is not by itself a *shareable URL*; upload it to a repository or link-accessible drive location.
+**Remember:** A local `.drawio` file is not by itself a _shareable URL_; upload it to a repository or link-accessible drive location.
 
 ---
 
 ## 21. Architectural decision record (ADR)
 
-| Decision | Rationale | Trade-off |
-|---|---|---|
-| **ADR-01: Next.js full-stack monolith** | Required framework; fast to develop and explain | Less separation than microservices, acceptable for MVP |
-| **ADR-02: JWT in HTTP-only cookie** | Small familiar auth flow; server-rendering compatible | No token revocation/refresh in MVP |
-| **ADR-03: No RBAC** | Not assessment-required; three-day limit; reduce code and test scope | Anyone logged in can manage resources |
-| **ADR-04: Creator-only reservation mutations** | Protect users from one another without roles | Any user still sees organizational bookings |
-| **ADR-05: Resource creator for attribution only** | Display who added resources without complex ownership rules | Other users may edit those records |
-| **ADR-06: Hard delete unused resource only** | Clean up accidental entries | Resources with any history must remain |
-| **ADR-07: Soft deactivate resources with history** | Preserve booking integrity | Must block while confirmed ongoing/future bookings remain |
-| **ADR-08: Cancel instead of deleting reservations** | History and simpler lifecycle | No permanent reservation deletion |
-| **ADR-09: PostgreSQL no-overlap exclusion constraint** | Correct under concurrent requests | Needs tested SQL migration |
-| **ADR-10: Two persisted reservation statuses** | Derive completion from time; no scheduled workers | Status presentation depends on current time |
-| **ADR-11: Basic shadcn/ui only** | Consistent UI while learning a small component set | Less visual customization; easier to defend |
-| **ADR-12: No dynamic importing or backend microservices** | Small codebase, familiar debugging | Advanced separation deferred |
+| Decision                                                  | Rationale                                                            | Trade-off                                                 |
+| --------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------- |
+| **ADR-01: Next.js full-stack monolith**                   | Required framework; fast to develop and explain                      | Less separation than microservices, acceptable for MVP    |
+| **ADR-02: JWT in HTTP-only cookie**                       | Small familiar auth flow; server-rendering compatible                | No token revocation/refresh in MVP                        |
+| **ADR-03: No RBAC**                                       | Not assessment-required; three-day limit; reduce code and test scope | Anyone logged in can manage resources                     |
+| **ADR-04: Creator-only reservation mutations**            | Protect users from one another without roles                         | Any user still sees organizational bookings               |
+| **ADR-05: Resource creator for attribution only**         | Display who added resources without complex ownership rules          | Other users may edit those records                        |
+| **ADR-06: Hard delete unused resource only**              | Clean up accidental entries                                          | Resources with any history must remain                    |
+| **ADR-07: Soft deactivate resources with history**        | Preserve booking integrity                                           | Must block while confirmed ongoing/future bookings remain |
+| **ADR-08: Cancel instead of deleting reservations**       | History and simpler lifecycle                                        | No permanent reservation deletion                         |
+| **ADR-09: PostgreSQL no-overlap exclusion constraint**    | Correct under concurrent requests                                    | Needs tested SQL migration                                |
+| **ADR-10: Two persisted reservation statuses**            | Derive completion from time; no scheduled workers                    | Status presentation depends on current time               |
+| **ADR-11: Basic shadcn/ui only**                          | Consistent UI while learning a small component set                   | Less visual customization; easier to defend               |
+| **ADR-12: No dynamic importing or backend microservices** | Small codebase, familiar debugging                                   | Advanced separation deferred                              |
 
 ### Interview explanation of omitted RBAC
 
@@ -1044,17 +1044,17 @@ README.md
 
 ## 22. Risks and mitigation
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Neon connection/migration failure | Blocks all backend functionality | Prove migrations first on Day 1; reuse known compatible driver workflow |
-| Overbooking under concurrent requests | Core scenario fails | PostgreSQL exclusion constraint + concurrent test |
-| Race between booking and deactivation | Inconsistent active-resource state | Consistent Resource row-lock transactions |
-| Unauthorized booking mutation | Cross-user data corruption | Server-side creator comparison, 403 tests |
-| Overly large UI scope | Incomplete core workflows | Basic shadcn/ui, simple forms, P1 dashboard only after P0 |
-| Confusing lifecycle rules | Incorrect deletes/cancels | Explicit BR matrix and status tests |
-| Hard deletion violates FK integrity | Missing historical resource | Restrict FK and return 409 |
-| UTC/local date confusion | Incorrect slots | Consistent instant storage and `Asia/Colombo` presentation |
-| Running out of time for delivery | Missing mandatory artifacts | Save Day 3 for README, ER, video, form |
+| Risk                                  | Impact                             | Mitigation                                                              |
+| ------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------- |
+| Neon connection/migration failure     | Blocks all backend functionality   | Prove migrations first on Day 1; reuse known compatible driver workflow |
+| Overbooking under concurrent requests | Core scenario fails                | PostgreSQL exclusion constraint + concurrent test                       |
+| Race between booking and deactivation | Inconsistent active-resource state | Consistent Resource row-lock transactions                               |
+| Unauthorized booking mutation         | Cross-user data corruption         | Server-side creator comparison, 403 tests                               |
+| Overly large UI scope                 | Incomplete core workflows          | Basic shadcn/ui, simple forms, P1 dashboard only after P0               |
+| Confusing lifecycle rules             | Incorrect deletes/cancels          | Explicit BR matrix and status tests                                     |
+| Hard deletion violates FK integrity   | Missing historical resource        | Restrict FK and return 409                                              |
+| UTC/local date confusion              | Incorrect slots                    | Consistent instant storage and `Asia/Colombo` presentation              |
+| Running out of time for delivery      | Missing mandatory artifacts        | Save Day 3 for README, ER, video, form                                  |
 
 ---
 
@@ -1108,7 +1108,7 @@ npm run build
 
 ## Appendix B — References and traceability
 
-- PrimeWave Lab (Pvt) Ltd, *Software Engineering Internship — Technical Assessment*, sections 2–9 (supplied PDF).
+- PrimeWave Lab (Pvt) Ltd, _Software Engineering Internship — Technical Assessment_, sections 2–9 (supplied PDF).
 - ReserveHub v2.0 plan and Chen ER diagram (superseded as to role and permission details).
 - Project decisions finalized on **13 October 2026**: no RBAC, collaborative resource management, conditional resource hard-delete/deactivation, global reservation read access, creator-only future edit/cancel.
 - diagrams.net native uncompressed `.drawio` uses `mxfile → diagram → mxGraphModel → root → mxCell` structure; see https://github.com/jgraph/drawio/wiki/File-Format.
