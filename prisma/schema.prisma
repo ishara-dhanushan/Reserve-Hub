@@ -79,6 +79,8 @@ model Resource {
 // Reservation
 // Only the creator may edit or cancel their future booking.
 // Confirmed reservations must not overlap for one resource.
+// The PostgreSQL exclusion and interval CHECK constraints are
+// maintained in the RH-03 rh-03-prevent_booking_overlap SQL migration.
 // ---------------------------------------------------------
 
 model Reservation {
