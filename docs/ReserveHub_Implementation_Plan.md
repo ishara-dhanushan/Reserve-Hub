@@ -1,1116 +1,1215 @@
-# ReserveHub — Complete Requirements and Implementation Plan
+# ReserveHub — Requirements and Implementation Plan
 
-**Product:** ReserveHub — Office Resource Reservation Management System  
-**Assessment:** PrimeWave Lab (Pvt) Ltd, Software Engineering Internship  
-**Document version:** **3.0 — Final simplified authenticated MVP**  
-**Updated:** 13 October 2026  
-**Submission deadline:** **Thursday, 15 October 2026, 11:59 PM (Sri Lanka, UTC+05:30)**  
-**Status:** Agreed implementation baseline — decisions identified separately from employer requirements  
-**Related conceptual ER:** `docs/ReserveHub_Final_Chen_ER_Diagram.drawio`
+| Document property     | Value                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| System                | ReserveHub — Office Resource Reservation Management System                           |
+| Project               | PrimeWave Lab Software Engineering Internship Technical Assessment                   |
+| Version               | 3.1                                                                                  |
+| Last updated          | 13 October 2026                                                                      |
+| Submission deadline   | 15 October 2026, 11:59 PM (Asia/Colombo, UTC+05:30)                                  |
+| Repository            | [ishara-dhanushan/Reserve-Hub](https://github.com/ishara-dhanushan/Reserve-Hub)      |
+| Implementation status | Foundation in progress; functional requirements are specified, not presumed complete |
 
----
+## 1. Purpose and scope
 
-## 1. Purpose and source of requirements
+ReserveHub provides a single location for employees to manage shared office resources and reserve them for defined periods. It replaces informal booking arrangements that make resource availability difficult to establish and allow conflicting bookings.
 
-This document supersedes **ReserveHub Requirements and Implementation Plan v2.0**, which specified Admin/User RBAC and a coordinator-style administrative workflow. **Version 3.0 has no roles.** All registered users share the same general permissions; **only a reservation's creator may modify or cancel it**. Every authenticated user may view all reservations and may manage resources.
+The application is a focused Next.js full-stack system backed by PostgreSQL. It provides user registration and login, collaborative resource management, organization-wide reservation visibility, and reliable prevention of overlapping confirmed reservations.
 
-The assessment PDF describes an organization struggling with informal reservations, overlapping time slots, and unclear shared-resource availability. It asks for a practical, reliable full-stack solution and leaves the feature interpretation and architecture to the candidate. In particular, the company specifies:
+The internship assessment specifies Next.js App Router, TypeScript, PostgreSQL, Git/GitHub, a locally runnable application, a setup README, a shareable entity-relationship diagram, and a 3–5-minute demonstration video. The particular authentication, resource lifecycle, and reservation policies in this document are application design requirements rather than additional employer mandates.
 
-| Source | Company requirement or expectation **[ASSESSMENT]** |
-|---|---|
-| Business scenario | Centralized management of shared resources and their reservations; clear usage and availability |
-| Technical expectations | **Next.js App Router, TypeScript, PostgreSQL, Git/GitHub**, persistent database, local run capability |
-| Scope | A **focused** system, not an enterprise platform; sound engineering decisions, reliability and usability |
-| Submission | Source code in GitHub with a setup README, a **3–5-minute demonstration video**, and a shareable ER diagram |
-| Evaluation | Interpretation, functionality, reliability, architecture, data model, code quality, usability, and ability to explain decisions |
-| Deadline | **15 October 2026 at 11:59 PM**, Sri Lanka time |
+### 1.1 Delivery priorities
 
-**[DESIGN DECISION]** marks requirements we chose to satisfy the scenario; the company did **not** explicitly demand registration, JWT, specific user roles, specific resource types, or these exact endpoint names. **[FUTURE]** marks excluded functionality.
+| Priority         | Scope                                                                                                                                                                                                              | Delivery rule                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| P0 — Required    | Authentication; resource management; reservation creation, viewing, rescheduling and cancellation; ownership authorization; conflict prevention; documentation and submission artifacts                            | Complete and verify before optional enhancements |
+| P1 — Enhancement | Search and filters; richer dashboard summaries; expanded automated tests; visual polish                                                                                                                            | Implement only when P0 workflows are reliable    |
+| P2 — Excluded    | Role-based access control, approval workflows, payments, recurring reservations, email verification, password recovery, notifications, external calendar synchronization, audit logging and multiple organizations | Do not introduce during MVP delivery             |
 
-**Submission URL supplied in assessment:** https://forms.gle/HzQH6tB5c4edPjnn8. Use the **same email address used for the original job application**.
+A resource represents a single exclusive bookable unit. A meeting room with a capacity of twelve is still one resource, not twelve independently reservable seats. Equipment records likewise represent distinct physical items.
 
----
+### 1.2 Primary user journey
 
-## 2. Product overview
+1. Open the public landing page and navigate to registration or login.
+2. Register an account and sign in.
+3. Arrive at the management dashboard containing direct access to Resources and Reservations.
+4. Create or inspect a resource.
+5. Check whether a future period is available and create a reservation.
+6. View reservations created by all registered users.
+7. Edit or cancel a future confirmed reservation only when the current user is its creator.
+8. Receive an explicit conflict response when the requested time overlaps another confirmed reservation.
 
-### 2.1 Product statement
+## 2. Actors and permissions
 
-ReserveHub is a single-organization website where registered employees can:
+The system has one registered-user type. The `User` model contains no role field and the application has no administrator-only endpoints.
 
-1. Sign up, sign in and sign out.
-2. Add shared office resources such as meeting rooms and individual projectors.
-3. Browse, update, deactivate or remove eligible resources.
-4. See who created a resource and who booked a resource.
-5. Search or inspect reservation availability for a date/time interval.
-6. Reserve one active resource for a specified time period.
-7. View **all** reservations created by all users.
-8. **Edit/reschedule or cancel only reservations that they themselves created**, and only before the reservation starts.
-9. Receive clear feedback if a time slot is already taken.
+| Operation                                                     | Visitor | Authenticated user | Reservation creator only |
+| ------------------------------------------------------------- | :-----: | :----------------: | :----------------------: |
+| View public landing page                                      |   Yes   |        Yes         |            No            |
+| Register or log in                                            |   Yes   |        Yes         |            No            |
+| Access dashboard, resources and reservations                  |   No    |        Yes         |            No            |
+| Create, view or edit a resource                               |   No    |        Yes         |            No            |
+| Deactivate an eligible resource                               |   No    |        Yes         |            No            |
+| Permanently delete a never-reserved resource                  |   No    |        Yes         |            No            |
+| Check availability and create a booking                       |   No    |        Yes         |            No            |
+| Read all reservations and creator names                       |   No    |        Yes         |            No            |
+| Edit or cancel a future confirmed reservation                 |   No    |        Yes         |           Yes            |
+| Edit or cancel an ongoing, completed or cancelled reservation |   No    |         No         |      Not permitted       |
+| Permanently delete a reservation                              |   No    |         No         |      Not permitted       |
 
-A resource is treated as **one exclusive bookable unit**. A meeting room with a capacity of 12 is still booked as a single resource; capacity is descriptive information, not 12 independently bookable seats. One projector represents one physically distinct item.
+The `createdById` field on a resource records attribution, not exclusive editing permission. Every authenticated user may manage all resource records, subject to lifecycle restrictions. Reservation ownership never changes after creation.
 
-### 2.2 User experience goal
+**Security requirement:** Interface controls are not an authorization boundary. API handlers and server-side business functions must verify the authenticated user and enforce ownership and lifecycle rules independently of the browser.
 
-A new user should be able to register, log in, add a room, book it, and observe another user viewing the booking without being able to modify it. Attempting another overlapping booking must fail reliably on the server and at the database level.
+## 3. Technical stack and tooling
 
-### 2.3 Constraints and priorities
+| Layer          | Technology                           | Purpose                                                                             |
+| -------------- | ------------------------------------ | ----------------------------------------------------------------------------------- |
+| Application    | Next.js 16 App Router                | Server Components, pages and HTTP Route Handlers                                    |
+| Language       | TypeScript                           | Typed application and data contracts                                                |
+| UI styling     | Tailwind CSS 4                       | Responsive layout and styling                                                       |
+| Components     | shadcn/ui, Radix UI, Nova preset     | Accessible base interface components                                                |
+| Icons          | Lucide React                         | SVG interface icons                                                                 |
+| Animation      | Motion (`motion/react`)              | Limited, accessible client-side transitions                                         |
+| Fonts          | Geist and Geist Mono                 | Interface typography                                                                |
+| Validation     | Zod                                  | Request and form validation                                                         |
+| Authentication | `jose`, `bcryptjs`, HttpOnly cookies | JWT signing/verification and password hashing                                       |
+| Database       | Neon PostgreSQL                      | Persistent relational storage and overlap constraint                                |
+| ORM            | Prisma 7 with Neon adapter           | Typed database access and reviewed SQL migrations                                   |
+| Code quality   | ESLint and Prettier                  | Static linting and consistent formatting                                            |
+| CI             | GitHub Actions, Node.js 24           | Dependency installation, Prisma generation, format check, lint and production build |
 
-- **P0 / Must:** End-to-end authentication, resource CRUD/lifecycle, reservation creation and viewing, ownership authorization, conflict prevention, README, ER diagram, demo.
-- **P1 / Nice to have:** Summary dashboard, richer filters/search, additional responsive polish, expanded tests.
-- **P2 / Excluded:** RBAC, admin accounts, approvals, payments, email verification/recovery, notifications, calendar integrations, recurring bookings, audit logging, resource photos, multiple organizations, and microservices.
+Keep the application in a single Next.js repository. Separate service deployment, Redis, Docker, background workers and microservices are not required.
 
-**Scope rule:** No new feature is added until all P0 acceptance criteria and the required submission artifacts are satisfied.
+### 3.1 Repository workflow
 
----
+- `main` is the integration and delivery branch.
+- Features and fixes are developed on short-lived `feature/**` and `fix/**` branches.
+- Pull requests target `main`; CI runs for PRs to `main` and pushes to `main`, `feature/**` and `fix/**`.
+- Review changes, run local checks, and verify CI before merging.
+- A successful build or CI run does not by itself establish correctness of database-backed business operations.
 
-## 3. Actors and permission model
+### 3.2 Existing foundation
 
-**There are no application roles and no Admin account.** `User` has no `role` property or enum. Authentication is JWT-based, and authorization is limited to identifying the current user and enforcing reservation ownership.
+The repository includes Prisma schema and Neon configuration, database setup and migration guides, shadcn/ui initialization, Lucide React, Motion, and a GitHub Actions workflow. Completion of authentication and reservation functionality must be established through separate implementation and testing. Avoid duplicating previously completed setup tasks.
 
-| Action | Visitor (not logged in) | Any authenticated user | Another reservation's creator? |
-|---|:---:|:---:|:---:|
-| Register/login | Yes | Yes | N/A |
-| Access dashboard, resources, reservations | No | Yes | Yes |
-| Add resource | No | Yes | Yes |
-| View any resource | No | Yes | Yes |
-| Edit resource details | No | Yes | Yes |
-| Delete an unused resource | No | Yes | Yes |
-| Deactivate/reactivate eligible resource | No | Yes | Yes |
-| See who added resources | No | Yes | Yes |
-| Check availability | No | Yes | Yes |
-| Create a reservation for self | No | Yes | Yes |
-| View all users' reservations and creator names | No | Yes | Yes |
-| Edit a **future reservation created by self** | No | Yes | **No** for other user's booking |
-| Cancel a **future reservation created by self** | No | Yes | **No** for other user's booking |
-| Edit/cancel ongoing, completed or cancelled booking | No | No | No |
-| Permanently delete a reservation | No | No | No |
+## 4. Page architecture and interface organization
 
-**Security invariant:** A hidden or disabled button is a UI convenience, **not** authorization. The API verifies the JWT and checks `reservation.userId === authenticatedUser.id` for every edit and cancel request. No authenticated user can override this rule.
+### 4.1 Route and navigation model
 
-**Intentional simplification:** Any logged-in user can edit or deactivate resource records, even those added by someone else. `createdById` exists **for attribution, not edit authorization**. For a production system, roles and audit trails would be valuable.
+The public website and authenticated application use the same Next.js App Router tree without additional route groups. Headers and footers are rendered only by pages requiring them, not by the root layout.
 
----
+| Route                           | Access                                   | Page purpose                                      | Navigation components           |
+| ------------------------------- | ---------------------------------------- | ------------------------------------------------- | ------------------------------- |
+| `/`                             | Public                                   | Simple introductory landing page                  | Public header and public footer |
+| `/login`                        | Public, redirects authenticated visitors | Sign in                                           | No header or footer             |
+| `/signup`                       | Public, redirects authenticated visitors | Account registration                              | No header or footer             |
+| `/dashboard`                    | Authenticated                            | Main management entry point                       | Application header              |
+| `/resources`                    | Authenticated                            | Resource catalogue and actions                    | Application header              |
+| `/resources/new`                | Authenticated                            | Resource creation                                 | Application header              |
+| `/resources/[resourceId]`       | Authenticated                            | Resource information and reservations             | Application header              |
+| `/resources/[resourceId]/edit`  | Authenticated                            | Resource editing                                  | Application header              |
+| `/reservations`                 | Authenticated                            | All reservations, including other users' bookings | Application header              |
+| `/reservations/new`             | Authenticated                            | Reservation creation                              | Application header              |
+| `/reservations/[reservationId]` | Authenticated                            | Reservation detail and eligible owner actions     | Application header              |
 
-## 4. Authentication — requirements (P0)
+The public landing page is intentionally minimal in the initial release. It contains ReserveHub branding, a short product description, and login/signup calls to action. A more elaborate public landing page is a subsequent design enhancement and must not block core functions.
 
-### AUTH-01 — Register a user
+After a successful login, navigate to `/dashboard`. The dashboard presents clear entry points to **Resources** and **Reservations**, not fabricated metrics or unnecessary analytics. A richer dashboard can be added after the core flows are functional.
 
-**Page:** `/register` · **Endpoint:** `POST /api/auth/register` · **Access:** Public.
+The `/signup` browser route uses `POST /api/auth/register` for account creation. The user-facing route name and API endpoint serve different purposes and are intentionally different.
 
-**Inputs:**
+### 4.2 Server and Client Component boundaries
 
-| Field | Rule |
-|---|---|
-| `name` | Required, trimmed, 2–100 characters |
-| `email` | Required, trimmed, lowercase, valid email, up to 254 characters, unique |
-| `password` | Required, 8–72 UTF-8 bytes (appropriate bcrypt input length) |
-| `confirmPassword` | Required in the UI, must match; not stored or passed into Prisma |
+- Every `page.tsx` is a **Server Component**. Do not add `"use client"` to page files.
+- Each `page.tsx` exports route-specific `metadata` with an appropriate browser title and description. The root layout provides a title template and default metadata.
+- For dynamic routes, use server-side `generateMetadata` only when entity-dependent titles are useful and safely available; a static route-specific title is sufficient for the MVP.
+- Introduce separate Client Components only for interactions requiring browser state or hooks: authentication forms, mobile navigation, filters, confirmation dialogs, reservation inputs, and Motion animations.
+- Database access, JWT verification, and server-only secrets stay in server modules and are never imported into Client Components.
+- Server Components can import Client Components. The root layout remains a Server Component even though it renders the client-side `AuthProvider`.
+- Shared headers and footers are imported explicitly into pages that render them. The root layout never renders a global header or footer.
 
-Server validates with Zod, hashes the password with `bcryptjs`, creates one `User`, and returns success; user is directed to the login page. Registration does not assign a role and does not automatically create a session.
+Example route metadata:
 
-**Errors:** 400 for invalid input; 409 for duplicate normalized email. Never store or return plaintext passwords or password hashes.
+```tsx
+import type { Metadata } from "next";
 
-**Acceptance:** Account is created and survives refresh/server restart; email uniqueness is enforced in PostgreSQL; login works with the registered credentials.
+export const metadata: Metadata = {
+  title: "Resources",
+  description: "Browse and manage shared office resources.",
+};
+```
+
+With `title.template = "%s | ReserveHub"` in the root layout, the resulting browser tab title is `Resources | ReserveHub`.
+
+### 4.3 Component placement and reuse
+
+A component is placed in `src/components/` only when it is genuinely reusable across different application features or pages. Components specific to one feature remain within that feature's route directory.
+
+**Use a single `components/` directory for each major route.** All resource-specific components are placed in `src/app/resources/components/`, whether used by the resource list, details, create form or edit screen. All reservation-specific components are placed in `src/app/reservations/components/`. Do not create nested `components/` directories under `new`, `[resourceId]`, `edit`, or other subroutes.
+
+Examples:
+
+| Component                                         | Location                               | Reason                                            |
+| ------------------------------------------------- | -------------------------------------- | ------------------------------------------------- |
+| shadcn Button, Card, Dialog                       | `src/components/ui/`                   | Reusable base UI                                  |
+| `ProtectedRoute`                                  | `src/components/auth/`                 | Used by several protected pages                   |
+| Application navigation                            | `src/components/layout/app-header.tsx` | Used by dashboard, resource and reservation pages |
+| Landing header and footer                         | `src/app/components/`                  | Used only by the landing page                     |
+| Landing animation or hero                         | `src/app/components/`                  | Landing-page-specific behavior                    |
+| Dashboard tiles / entry cards                     | `src/app/dashboard/components/`        | Dashboard-specific display                        |
+| Resource form, list row and action dialog         | `src/app/resources/components/`        | Shared within resource feature only               |
+| Reservation form, availability picker and actions | `src/app/reservations/components/`     | Shared within reservation feature only            |
+| Login form                                        | `src/app/login/components/`            | Login-specific behavior                           |
+| Signup form                                       | `src/app/signup/components/`           | Signup-specific behavior                          |
+
+A page does not require a separate component file for purely static markup. Avoid abstractions used only once unless they isolate substantial client-side interaction.
+
+### 4.4 Responsive, accessible UI
+
+- Use clear layouts for desktop and mobile screens; content must not overflow horizontally.
+- Ensure labels match fields, keyboard focus is visible, error messages are readable, and dialogs have accessible titles and descriptions.
+- Show loading, empty and error states rather than mock statistics or invented resource data.
+- Use shadcn/ui for common accessible interactions and Lucide React for consistent icons.
+- Use Motion only for restrained client-side transitions; honor reduced-motion preferences. Standard focus and hover states should generally use CSS.
+- Do not introduce an advanced calendar, charting framework, or multi-level navigation merely to demonstrate visual complexity.
+
+## 5. Authentication and session management
+
+### AUTH-01 — Registration
+
+**Browser page:** `/signup`  
+**Endpoint:** `POST /api/auth/register`  
+**Access:** Public
+
+| Input             | Validation                                                                |
+| ----------------- | ------------------------------------------------------------------------- |
+| `name`            | Required, trimmed, 2–100 characters                                       |
+| `email`           | Required, trimmed, lowercase, valid email, maximum 254 characters, unique |
+| `password`        | Required, 8–72 UTF-8 bytes for bcrypt                                     |
+| `confirmPassword` | Required in the form and must equal password; not persisted               |
+
+Validate requests with Zod, hash passwords using `bcryptjs`, and persist the `User` record. Registration returns a successful result and directs the user to `/login`. Registration does not automatically create a session in the MVP. Duplicate normalized email returns 409; invalid input returns 400. Never store or return plaintext passwords or password hashes.
 
 ### AUTH-02 — Login
 
-**Page:** `/login` · **Endpoint:** `POST /api/auth/login` · **Access:** Public.
+**Browser page:** `/login`  
+**Endpoint:** `POST /api/auth/login`  
+**Access:** Public
 
-Look up the normalized email, compare the bcrypt hash, and generate a signed JWT containing minimal claims (e.g. `sub`, `iat`, `exp`, `iss`). Respond with a secure, HTTP-only session cookie, not a token in response JSON. Use a generic **"Invalid email or password"** message for incorrect credentials.
+Normalize the email, locate the corresponding user, compare bcrypt password hashes, and issue a signed JWT through a session cookie. Invalid credentials return 401 with the same generic message regardless of whether the email or password was incorrect. The token is never returned in response JSON or written to local storage.
 
-**Acceptance:** Valid credentials authenticate; incorrect credentials return 401; authenticated pages work after refresh while the cookie remains valid.
+After the cookie is set and the auth context is refreshed, the browser navigates to `/dashboard`. Authenticated visits to `/login` or `/signup` redirect to `/dashboard`.
 
-### AUTH-03 — JWT session security
+### AUTH-03 — JWT and cookie security
 
-- Use `jose` with HS256 and a random 32-byte-or-longer `JWT_SECRET` stored only in server environment variables.
-- JWT lifetime: **12 hours**; verify expiration, signature and issuer on protected requests.
-- Cookie: `reservehub_session`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` for HTTPS production, and maximum age aligned with token expiry.
-- Never put JWTs in `localStorage`, expose the secret through `NEXT_PUBLIC_*`, or print credential values.
-- Verify that the user identified by `sub` still exists.
-- Check `Origin` for state-changing cookie-authenticated HTTP requests; reject untrusted origins (CSRF defense in addition to SameSite).
-- Use a server-side `getCurrentUser()` or `requireUser()` helper, reused by route handlers and server rendering.
+- Sign and verify JWTs using `jose` with HS256 and an unpredictable `JWT_SECRET` of at least 32 bytes, stored in server-only environment configuration.
+- JWT validity is 12 hours, with signature, issuer and expiry verification.
+- Cookie name is `reservehub_session`, with `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` in production HTTPS. Align maximum age with token expiry.
+- Verify that the user identified by the JWT subject still exists.
+- Check request origin for state-changing cookie-authenticated requests to reduce CSRF exposure.
+- Treat the JWT subject as the source of user identity for every write. Ignore or reject client-supplied owner/creator identifiers.
+- No refresh token, account-wide forced logout, token revocation list, or email-based recovery is required.
 
-**Known limitation:** Clearing the browser cookie does **not** revoke a copied JWT. No refresh-token or global revocation system is part of this MVP.
+### AUTH-04 — Auth context and navigation
 
-### AUTH-04 — Logout and navigation protection
+Implement `AuthProvider` in `src/context/auth-context.tsx`, imported by `src/app/layout.tsx`.
 
-**Endpoint:** `POST /api/auth/logout` clears the cookie. Protected pages redirect unauthenticated visitors to `/login`; protected APIs return 401. Use `/api/auth/me` to return the current public user profile (`id`, `name`, `email`).
+The provider is a Client Component exposing the current public user (`id`, `name`, `email`), loading state, and a method to refresh the session. It reads identity from `GET /api/auth/me` using the HttpOnly cookie; it must not read the JWT itself.
 
-**Acceptance:** After logout, the browser no longer makes authenticated requests using the cleared cookie. Direct route access and manual API requests are protected.
+`ProtectedRoute` belongs in `src/components/auth/protected-route.tsx` and is rendered **only by pages that require authentication**. When session loading has completed and the user is not authenticated, the component navigates to `/login`; authenticated content is not displayed during the loading check. A successful logout clears the cookie, resets/refetches context, and navigates to the public site or login.
 
-### AUTH-05 — Single-user authorization (replaces RBAC)
+The auth context and client-side `ProtectedRoute` improve navigation and user experience; they do **not** constitute a security boundary. A protected Server Component must call a server-side session helper such as `requireUser()` before fetching or rendering private data, and redirect unauthenticated requests to `/login`. Every protected API route separately verifies identity and authorization and returns 401/403 where appropriate. Never place private database results into HTML or serialized React props before completing the server check.
 
-All logged-in users may manage resources and view all reservations. There are **no role checks**, seeded administrators, role-based navigation, or privileged API routes. Every resource/reservation creation request derives the creator ID from the verified JWT rather than accepting an untrusted `userId` or `createdById` from the request body.
+The `GET /api/auth/me` endpoint returns only public user fields or 401; `POST /api/auth/logout` clears the session cookie.
 
-**Acceptance:** Account X cannot impersonate account Y by submitting another user ID; all logged-in users can manage resources; no role field is persisted.
+**Implementation dependency:** UI foundation work may create public headers, static pages and navigation before authentication exists. Protected pages must not rely on a simulated authenticated user or a permanently successful stub. Complete auth context, protected navigation and server checks alongside working auth APIs.
 
-### AUTH-06 — Reservation ownership authorization
+### AUTH-05 — Ownership authorization
 
-- Any authenticated user may list or view bookings, including those belonging to someone else.
-- Only the **creator** may reschedule/change purpose or cancel a reservation, and only when `status=CONFIRMED` and its original `startAt` is strictly in the future.
-- Enforce the check in the server service/handler on every PATCH and cancel, not only in the UI.
-- Existing booking owner is immutable. No transfer of ownership through an API request.
-- For a nonexistent reservation, return 404; for a real reservation owned by someone else, return 403 (appropriate because the booking is viewable to all authenticated users).
+- Resource CRUD and eligible deactivation are available to all authenticated users.
+- All authenticated users can view all reservations.
+- Only a reservation's original creator can change or cancel their future confirmed reservation.
+- Ownership and eligibility are validated in the server service or route handler on every mutation, even when the UI hides controls.
+- Non-owner updates to existing reservations return 403. Missing reservations return 404. Reservation ownership cannot be transferred.
 
-**Acceptance:** Two users can view the same booking, but a non-owner receives 403 on edit/cancel, even when calling the API directly.
+## 6. Resource management
 
-### AUTH-07 — Basic security and validation
+### RES-01 — Resource catalogue and detail
 
-Use server-side Zod validation, bcrypt hashing, Prisma parameterization, input length limits, no untrusted HTML rendering, and safe error handling. Do not claim production-grade brute-force protection or email ownership verification: rate limits, email confirmation, password recovery and sessions revocation are **out of scope**.
+**Routes:** `/resources`, `/resources/[resourceId]`  
+**Endpoints:** `GET /api/resources`, `GET /api/resources/[resourceId]`
 
----
-
-## 5. Resource management — requirements (P0)
-
-### RES-01 — Resource list and detail
-
-**Pages:** `/resources`, `/resources/[resourceId]` · **Endpoints:** `GET /api/resources`, `GET /api/resources/[resourceId]`.
-
-Display all resources, including inactive ones with clearly marked status. Show name, type, location, optional capacity/description, created-by display name, and current availability or next reservations. A basic text/type search is **P1**; showing the list is **P0**.
+Display all active and inactive resources with name, type, location, optional capacity and description, status and original creator. Resource detail can show future reservations and availability. Search by text/type/status is a P1 enhancement; reliable listing and detail are P0.
 
 ### RES-02 — Create resource
 
-**Page:** `/resources/new` or a dialog · **Endpoint:** `POST /api/resources`.
+**Route:** `/resources/new` (or an accessible creation dialog)  
+**Endpoint:** `POST /api/resources`
 
-| Field | Validation |
-|---|---|
-| `name` | Required, trimmed, 2–100 characters |
-| `type` | Required; `MEETING_ROOM` or `EQUIPMENT` |
-| `location` | Required, trimmed, 2–120 characters |
-| `capacity` | Optional positive integer (mainly useful for rooms) |
-| `description` | Optional, up to 500 characters |
+| Field         | Validation                            |
+| ------------- | ------------------------------------- |
+| `name`        | Required, trimmed, 2–100 characters   |
+| `type`        | `MEETING_ROOM` or `EQUIPMENT`         |
+| `location`    | Required, trimmed, 2–120 characters   |
+| `capacity`    | Optional positive integer             |
+| `description` | Optional text, maximum 500 characters |
 
-The server assigns `createdById` from the authenticated user; `isActive` defaults to `true`; timestamps are generated automatically. Repeated names are permitted (two distinct rooms may be named similarly); a resource is identified by its ID.
-
-**Acceptance:** Any signed-in user can add a valid resource, and it appears for everyone after refresh. Malformed input returns 400.
+The server populates `createdById` from the authenticated JWT and sets `isActive = true` by default. Duplicate resource names are allowed; identity is established by the unique resource ID. On success, the created record is persisted and displayed in the catalogue.
 
 ### RES-03 — Edit resource
 
-**Page:** `/resources/[resourceId]/edit` or dialog · **Endpoint:** `PATCH /api/resources/[resourceId]`.
+**Route:** `/resources/[resourceId]/edit` (or dialog)  
+**Endpoint:** `PATCH /api/resources/[resourceId]`
 
-All logged-in users can edit a resource's name, type, location, capacity, and description. The server must not allow clients to change `createdById`, `createdAt` or `id`. The creator's name remains visible after others edit the resource. Display save success/error messages.
+Any authenticated user may update the resource's editable fields. Do not allow clients to overwrite `id`, `createdById`, or `createdAt`. Display the original creator after another user edits the resource. Return appropriate validation and missing-record errors.
 
-**Acceptance:** User B can edit a resource added by User A, and User A remains the recorded creator.
+### RES-04 — Deactivate and reactivate
 
-### RES-04 — Deactivate/reactivate resource
+An inactive resource remains visible and preserves reservation history, but cannot accept new bookings. Deactivation is prohibited while there is any `CONFIRMED` reservation with `endAt > now`, including ongoing or future bookings. Completed or cancelled reservations do not prevent deactivation. Reactivation is permitted and allows new bookings, subject to subsequent availability checks.
 
-Use the same PATCH endpoint with `isActive` and a confirmation dialog.
+Deactivation must be validated on the server, coordinated with concurrent booking writes, and return 409 when an active or upcoming confirmed booking prevents the change. Do not silently cancel existing reservations.
 
-- `isActive=false` makes a resource **unavailable for new reservations** while retaining the record and history.
-- **Do not deactivate** if the resource has any `CONFIRMED` reservation with `endAt > now` (includes **currently ongoing** and future reservations).
-- Existing cancelled and completed reservations do not block deactivation.
-- Reactivation sets `isActive=true`, allowing new bookings again.
-- All changes are validated on the server. Coordinate this check with booking writes to avoid races (see Section 10).
+### RES-05 — Permanent deletion
 
-**Acceptance:** A resource with an ongoing/future confirmed booking gets 409 on deactivation; a resource with only completed/cancelled records may be deactivated; an inactive resource cannot be booked.
+**Endpoint:** `DELETE /api/resources/[resourceId]`
 
-### RES-05 — Permanently delete **never-reserved** resources
+Hard deletion is permitted **only when the resource has never been referenced by any reservation**. Historical cancelled and completed reservations also block deletion.
 
-**Endpoint:** `DELETE /api/resources/[resourceId]`.
+| Condition                                            | Result                                                 |
+| ---------------------------------------------------- | ------------------------------------------------------ |
+| Zero reservation records reference the resource      | Delete the resource; return 204                        |
+| At least one reservation of any status references it | Return 409 with guidance about deactivation            |
+| An ongoing or future confirmed reservation exists    | Hard-delete remains blocked; deactivation also blocked |
 
-To allow removal of accidental records, any logged-in user may **hard-delete a resource only if no `Reservation` record has ever referenced it**. This includes confirmed, completed, and cancelled reservation history: **any history makes hard deletion unavailable**.
+Preserve the database foreign key with `onDelete: Restrict`. Deletion and deactivation are different operations; do not convert one into the other automatically.
 
-- `0` related reservation records → permanently delete; return 204; show confirmation dialog.
-- `>=1` related record → **409 Conflict** with message: "This resource has reservation history. Deactivate it instead, if eligible."
-- If it also has current/future confirmed bookings, deactivation is independently prohibited by RES-04.
-- Do **not** automatically convert DELETE to deactivation; these are separate, predictable user actions.
-- Use a restrictive foreign key (`onDelete: Restrict`) on the Reservation→Resource relationship so concurrent/stale requests cannot remove referenced resources.
-
-**Acceptance:** Accidentally created unused resource can be removed, and any previously booked resource preserves history.
-
-### RES-06 — Search/filter resources (P1)
-
-Filter by name/type/active state. Avoid sophisticated indexing, image uploads or equipment stock quantities.
-
----
-
-## 6. Reservation management — requirements (P0)
+## 7. Reservation management
 
 ### BOOK-01 — Create reservation
 
-**Page:** `/reservations/new` or booking dialog · **Endpoint:** `POST /api/reservations`.
+**Route:** `/reservations/new` (or booking dialog)  
+**Endpoint:** `POST /api/reservations`
 
-**Fields:** `resourceId`, `purpose` (required, trimmed, e.g. 3–200 characters), `startAt`, `endAt`.
+Required inputs: `resourceId`, `purpose`, `startAt`, and `endAt`. The purpose is trimmed and validated, typically 3–200 characters. Derive `userId` only from the authenticated session.
 
-Flow: choose active resource → select start/end date-times → optionally check availability → enter purpose → submit → server validates resource, authenticated owner and interval → database inserts a `CONFIRMED` booking if no conflict → display success.
+Creation flow: select resource → choose a future interval → inspect availability → enter purpose → submit → validate on the server → insert a confirmed reservation when no conflict exists → display feedback.
 
-`userId` is always read from the JWT; it is **not accepted** from the browser. No approval state or booking on behalf of another user.
+### BOOK-02 — Time and status semantics
 
-### BOOK-02 — Validate date/time and status
+- `startAt` must be strictly in the future when a reservation is created.
+- `endAt` must be strictly later than `startAt`.
+- Persist instants using PostgreSQL `timestamptz(3)`; display in the configured `Asia/Colombo` local time.
+- Intervals are half-open: `[startAt, endAt)`. A reservation ending at 10:00 and one starting at 10:00 do not overlap.
+- Store only `CONFIRMED` and `CANCELLED` statuses.
+- Derive `Upcoming`, `Ongoing` and `Completed` presentation labels from timestamps for confirmed reservations. A cancelled booking displays `Cancelled` regardless of time.
+- No cron task, timezone selector, minimum duration tier or recurring-booking engine is part of the MVP.
 
-- `startAt` must be **strictly in the future** at creation.
-- `endAt > startAt`.
-- Store timestamps as UTC instants (`@db.Timestamptz(3)` in PostgreSQL) and display using `Asia/Colombo` (Sri Lanka time).
-- Reject invalid/missing dates, unknown resource IDs, inactive resources and empty purpose.
-- Booking intervals use **half-open** semantics: `[startAt, endAt)`. A booking ending at 10:00 and another starting at 10:00 **do not conflict**.
-- Keep only **two persisted states**: `CONFIRMED`, `CANCELLED`.
-- Display derived labels: **Upcoming** (`startAt>now`), **Ongoing** (`startAt<=now<endAt`), **Completed** (`endAt<=now`) for confirmed bookings; **Cancelled** when stored status is `CANCELLED`.
-- No cron job or background state transition is necessary to mark completion.
+### BOOK-03 — Prevent overlapping bookings
 
-**Simplification:** No arbitrary same-day requirement, booking-duration tier, recurring scheduling, timezone selector, or minimum/maximum slot length in the MVP. The essential ordering/future/overlap rules are enough.
-
-### BOOK-03 — Prevent double booking (critical)
-
-Two `CONFIRMED` reservations conflict if they refer to the same resource and:
+Two confirmed reservations on the same resource overlap when:
 
 ```text
 existing.startAt < requested.endAt
 AND existing.endAt > requested.startAt
 ```
 
-- Apply this rule when creating and when changing the time of a reservation.
-- Exclude `CANCELLED` reservations from conflict checks.
-- Perform a normal server-side check for a helpful conflict message **and** enforce a PostgreSQL exclusion constraint, so two near-simultaneous requests cannot both succeed.
-- On database conflict, return **409 Conflict** with message: "This resource is already reserved for the selected time."
-- See Section 10 for exact SQL and concurrency treatment.
+Use a server query to produce helpful feedback, but rely on a PostgreSQL exclusion constraint to provide the final concurrency guarantee. Cancelled reservations do not block availability.
 
-### BOOK-04 — View all reservations
-
-**Page:** `/reservations` · **Endpoint:** `GET /api/reservations`.
-
-Every authenticated user can view the organization's booking list. Show resource name, date/time, user display name (**"Reserved by"**), purpose, derived state, and stored cancellation state. Do not expose emails, password hashes, JWTs or internal credentials. Add a **My reservations** filter/view using `userId === currentUser.id`. Filtering by resource/status/date is P1.
-
-**Acceptance:** User A can view User B's booking details, but has no available edit/cancel action for it; manually calling the mutation API returns 403.
-
-### BOOK-05 — Reservation detail
-
-**Endpoint:** `GET /api/reservations/[reservationId]` · **Page:** `/reservations/[reservationId]` or a modal.
-
-Show the resource, creator display name, purpose, date/time, and status. If the current user created a **future confirmed** reservation, show Edit and Cancel. Otherwise show a view-only screen with a short explanation. All users can read details (authenticated only).
-
-### BOOK-06 — Edit/reschedule **own future** reservation
-
-**Endpoint:** `PATCH /api/reservations/[reservationId]`.
-
-An owner may change **purpose and/or start/end times** if the stored booking is confirmed and its **original startAt > now**. The revised start must also be in the future. Re-run validation and overlap checking; exclude the current booking ID from the conflict check. No change of `userId` or `resourceId` in MVP—cancel and make a new reservation if a different resource is needed.
-
-**Acceptance:** The owner may reschedule a future booking; another user's PATCH gets 403; ongoing/completed/cancelled bookings cannot be edited; an overlapping reschedule returns 409 and leaves old values intact.
-
-### BOOK-07 — Cancel **own future** reservation
-
-**Endpoint:** `POST /api/reservations/[reservationId]/cancel`.
-
-An owner may cancel when `status=CONFIRMED` and `startAt>now`; change status to `CANCELLED`, keep the record, and release the slot. Another user cannot cancel it. Ongoing or completed reservations are immutable, including cancellation. Repeat cancellation returns 409 with a clear explanation (or an explicitly documented idempotent outcome; choose **409**).
-
-**No hard deletion of reservations in this MVP.** The request to allow future deletes has been intentionally simplified to **future-only cancellation** to preserve history and reduce complexity.
-
-### BOOK-08 — Availability check
-
-**Endpoint:** `GET /api/resources/[resourceId]/availability?startAt=...&endAt=...`.
-
-Show Available/Unavailable for the chosen interval. For an inactive resource, return Unavailable with reason. If a confirmed booking overlaps, show the time slot as unavailable. This check improves UX but the authoritative decision happens on booking write. Optionally display booked intervals without exposing unrelated user information beyond the organization-visible reservation list.
-
-### BOOK-09 — Reservation filters (P1)
-
-Filter by All/Mine, resource, date and lifecycle label. Use simple dropdowns and a date field rather than a complex drag-and-drop calendar.
-
----
-
-## 7. Dashboard and navigation
-
-### DASH-01 — Minimal dashboard (P1)
-
-Show total active resources, confirmed upcoming bookings, today's confirmed bookings, and a short upcoming reservations list. Dashboard is a usability enhancement, **not a prerequisite for completing reservation correctness**. If behind schedule, `/resources` can act as the authenticated landing page.
-
-### UX-01 — Practical interface (P0)
-
-- Shared authenticated navbar/sidebar: Resources, Reservations, Add Resource, New Reservation, My Reservations, Log out.
-- Display logged-in user's name in the header.
-- Loading indicators, empty states, confirmation dialogs, clearly worded 401/403/404/409 errors, success feedback.
-- Resource list: state and creator; resource details: upcoming bookings and availability.
-- Booking list: owner name and dates; owner-only edit/cancel buttons for eligible future bookings.
-- Prevent duplicate form submissions with disabled loading submit buttons **without** relying on the UI for double-booking protection.
-- Mobile-friendly forms and sensible card/list layout. Keep styling consistent using Tailwind CSS and a small number of shadcn/ui components.
-
-**No** full calendar UI, realtime websockets, interactive floor maps, analytics charts or elaborate animation.
-
----
-
-## 8. Core business rules — frozen
-
-| ID | Rule | Outcome / failure |
-|---|---|---|
-| BR-01 | Creating/changing data requires a valid JWT | Missing/invalid cookie → 401 |
-| BR-02 | All users have the same resource rights | No role or resource-creator restriction |
-| BR-03 | Creator IDs come from JWT, not request data | Spoofed `userId` / `createdById` ignored or rejected |
-| BR-04 | Resources must be active to accept bookings | Booking inactive resource → 409 |
-| BR-05 | Reservation start in future; end after start | Invalid interval → 400 |
-| BR-06 | Confirmed intervals for same resource may not overlap | Conflict → 409 even under concurrent requests |
-| BR-07 | Anyone authenticated can **view** all reservations | Listing and detail allowed |
-| BR-08 | Only creator can **edit/cancel** their reservation | Non-owner edit/cancel → 403 |
-| BR-09 | Only future confirmed reservations editable/cancellable | Ongoing/past/cancelled → 409 |
-| BR-10 | Cancelled bookings don't block future availability | Cancelled reservation retained |
-| BR-11 | Hard-delete resource only if **no reservation records of any status** | Resource with history → 409 |
-| BR-12 | Deactivate resource only when **no ongoing/future confirmed booking** | Existing `endAt > now` → 409 |
-| BR-13 | Inactive resources and cancelled bookings remain visible | History retained |
-| BR-14 | Completed status is derived from time; not persisted | No scheduled status update |
-
-**Examples:**
-
-| Situation | Permitted? | Explanation |
-|---|---|---|
-| Alice books Room A 09:00–10:00, Bob books 10:00–11:00 | **Yes** | Adjacent intervals |
-| Alice books 09:00–10:00, Bob tries 09:30–10:30 | **No** | Overlap |
-| Bob opens Alice's booking details | **Yes** | All bookings viewable |
-| Bob edits/cancels Alice's future booking | **No** | Creator-only mutation |
-| Alice cancels her future confirmed booking | **Yes** | Slot opens again |
-| Alice edits her booking after it has started | **No** | Ongoing/past immutable |
-| Bob edits a room originally added by Alice | **Yes** | Collaborative resource maintenance |
-| Bob deletes a room never reserved | **Yes** | No history |
-| Bob deletes room with a cancelled reservation | **No** | Still has history |
-| Bob deactivates resource with completed bookings only | **Yes** | No ongoing/future confirmed booking |
-| Bob deactivates room during an ongoing booking | **No** | Active booking protected |
-
----
-
-## 9. Database and conceptual ER specification
-
-### 9.1 Chen-notation conceptual model
-
-**Diagram:** `ReserveHub_Final_Chen_ER_Diagram.drawio` (editable source), plus `.svg` / `.png` previews. The diagram uses entity rectangles, attribute ellipses, relationship diamonds, cardinality labels `1`/`N`, and underlined primary keys.
-
-**Exactly three entities and three relationships:**
-
-```text
-USER (1) ───── CREATES ───── (N) RESOURCE
-USER (1) ─────  MAKES  ───── (N) RESERVATION
-RESOURCE (1) ─ BOOKED FOR ── (N) RESERVATION
-```
-
-- One `USER` may create zero or many resources; each resource records exactly one creator.
-- One `USER` may create zero or many reservations; each reservation belongs to exactly one creator.
-- One `RESOURCE` may have zero or many reservations; each reservation is for exactly one resource.
-- This is a **conceptual Chen ER**: the relationship connectors represent foreign keys. FK columns appear in the physical Prisma models, not redundantly as independent conceptual relationship attributes.
-- JWT is a token, **not a separate entity**. No `Role`, `Admin`, `Permission`, or `Session` entity is required.
-
-### 9.2 Entity attributes
-
-**USER**
-
-| Attribute | Physical type / rule |
-|---|---|
-| `id` (`userId` in ER) | UUID/string primary key (Prisma `@id @default(uuid())`) |
-| `name` | String; required |
-| `email` | String; required, unique, normalized lowercase |
-| `passwordHash` | String; bcrypt hash; never returned in API |
-| `createdAt` | `DateTime`, generated |
-
-**RESOURCE**
-
-| Attribute | Physical type / rule |
-|---|---|
-| `id` (`resourceId` in ER) | UUID/string primary key |
-| `name` | Required string |
-| `type` | Enum `MEETING_ROOM` / `EQUIPMENT` |
-| `location` | Required string |
-| `capacity` | Optional positive integer |
-| `description` | Optional string |
-| `isActive` | Boolean, default `true` |
-| `createdById` | FK → `User.id`, required, `onDelete: Restrict` |
-| `createdAt`, `updatedAt` | Automatically maintained timestamps |
-
-**RESERVATION**
-
-| Attribute | Physical type / rule |
-|---|---|
-| `id` (`reservationId` in ER) | UUID/string primary key |
-| `userId` | FK → `User.id`, required, `onDelete: Restrict` |
-| `resourceId` | FK → `Resource.id`, required, `onDelete: Restrict` |
-| `purpose` | Required string |
-| `startAt`, `endAt` | `DateTime` with PostgreSQL `@db.Timestamptz(3)` |
-| `status` | Enum `CONFIRMED` / `CANCELLED`, default `CONFIRMED` |
-| `createdAt` | Generated timestamp |
-
-**Recommended indexes:** Resource `createdById` and `isActive`; Reservation `(resourceId,startAt)`, `(userId,startAt)`, `(status,startAt)`; User unique `email`. PostgreSQL also manages an index for the reservation exclusion constraint.
-
-### 9.3 Database integrity and deletion
-
-- Enforce the email uniqueness and FK requirements in PostgreSQL.
-- Keep `Reservation.resourceId` restrictive on delete so past bookings remain referentially valid.
-- Never expose a user deletion operation; related resources and reservations depend on User records.
-- Use `CHECK ("endAt" > "startAt")` for interval ordering, if supported via manual migration.
-- Apply a PostgreSQL exclusion constraint for overlap prevention (Section 10).
-- A resource with historical bookings can remain `isActive=false`; this is **soft deactivation**, not automatic deletion.
-
-### 9.4 Example Prisma model shape (implementation guidance, not yet executed)
-
-```prisma
-// The complete datasource/generator declarations are supplied during setup.
-enum ResourceType {
-  MEETING_ROOM
-  EQUIPMENT
-}
-
-enum ReservationStatus {
-  CONFIRMED
-  CANCELLED
-}
-
-model User {
-  id                 String        @id @default(uuid())
-  name               String
-  email              String        @unique
-  passwordHash       String
-  createdAt          DateTime      @default(now())
-  createdResources   Resource[]    @relation("ResourceCreator")
-  reservations       Reservation[]
-}
-
-model Resource {
-  id                 String        @id @default(uuid())
-  name               String
-  type               ResourceType
-  location           String
-  capacity           Int?
-  description        String?
-  isActive           Boolean       @default(true)
-  createdById        String
-  createdBy          User          @relation("ResourceCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  reservations       Reservation[]
-
-  @@index([createdById])
-  @@index([isActive])
-}
-
-model Reservation {
-  id                 String            @id @default(uuid())
-  userId             String
-  resourceId         String
-  purpose            String
-  startAt            DateTime          @db.Timestamptz(3)
-  endAt              DateTime          @db.Timestamptz(3)
-  status             ReservationStatus @default(CONFIRMED)
-  createdAt          DateTime          @default(now())
-  user               User              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  resource           Resource          @relation(fields: [resourceId], references: [id], onDelete: Restrict)
-
-  @@index([resourceId, startAt])
-  @@index([userId, startAt])
-  @@index([status, startAt])
-}
-```
-
-**Prisma v7 note:** The connection configuration may belong in `prisma.config.ts` and the application may require a driver adapter; confirm against the exact installed Prisma version. The schema above documents the agreed data model, not a claim that it has already been migrated.
-
----
-
-## 10. Overlap prevention and concurrency design
-
-### 10.1 Overlap formula
-
-Two confirmed bookings of the same resource overlap when:
-
-```typescript
-existing.startAt < requested.endAt && existing.endAt > requested.startAt
-```
-
-Intervals touching at their boundaries do not overlap. A cancelled booking must not block future slots. A reschedule excludes the current reservation row from the preliminary lookup.
-
-### 10.2 PostgreSQL constraint (P0, critical)
-
-Application-only checks have a race: two concurrent requests can both find the same slot free. Add the constraint in a **Prisma migration SQL file** using PostgreSQL's `btree_gist` extension and range support:
+An illustrative migration, to be adapted and reviewed against the generated schema, is:
 
 ```sql
--- Supports GiST equality on the resource's string ID.
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
--- Confirmed bookings for one resource may never have intersecting time ranges.
 ALTER TABLE "Reservation"
-ADD CONSTRAINT reservation_no_confirmed_overlap
-EXCLUDE USING gist (
-  "resourceId" WITH =,
-  tstzrange("startAt", "endAt", '[)') WITH &&
-)
-WHERE ("status" = 'CONFIRMED');
-
--- Ordering validation; optionally put in the same migration.
-ALTER TABLE "Reservation"
-ADD CONSTRAINT reservation_valid_interval CHECK ("endAt" > "startAt");
+  ADD CONSTRAINT "reservation_confirmed_no_overlap"
+  EXCLUDE USING gist (
+    "resourceId" WITH =,
+    tstzrange("startAt", "endAt", '[)') WITH &&
+  )
+  WHERE ("status" = 'CONFIRMED');
 ```
 
-**Implementation detail:** Depending on the generated migration/enum naming and the database permissions, adjust SQL to match the actual schema and confirm `CREATE EXTENSION` succeeds on Neon. An exclusion violation is normally PostgreSQL SQLSTATE **23P01**. Convert that database failure to an HTTP 409 with a friendly message. Test by firing two concurrent booking requests for the same interval; **exactly one** must succeed.
+Inspect the actual PostgreSQL enum and constraint names in the migration before execution. This is a database constraint, not a replacement for validating resource existence, active state and time ordering.
 
-### 10.3 Resource lifecycle / booking race
+Concurrent attempts to reserve the same resource and overlapping interval must produce **at most one successful insert**. Translate exclusion-constraint violations into HTTP 409 without exposing raw SQL messages.
 
-A booking must not slip in at the same time as resource deactivation. For booking create and resource deactivation, use a consistent database transaction strategy: lock the relevant Resource row (`SELECT ... FOR UPDATE`, using safe parameterization), then check `isActive` and (for deactivation) that there is no `CONFIRMED` reservation whose `endAt>now`. Perform the write before releasing the transaction. Hard delete also relies on FK Restrict; do the history check and delete transactionally and handle a concurrent FK rejection gracefully.
+### BOOK-04 — List and view reservations
 
-The GiST constraint is still required for booking-to-booking concurrency. A UI-only check is never sufficient.
+**Routes:** `/reservations`, `/reservations/[reservationId]`  
+**Endpoints:** `GET /api/reservations`, `GET /api/reservations/[reservationId]`
 
-### 10.4 Editing and cancelling safely
+Show records for all registered users, including resource, purpose, creator display name, start/end time and derived status. All/Mine and status filters are useful enhancements but should not delay the core listing. Never expose password hashes or private session data in responses.
 
-- Check current user ID, reservation owner, `CONFIRMED` status and future `startAt` on the server **at mutation time**.
-- Update the reservation transactionally (guard against stale writes with a conditional `updateMany` if appropriate).
-- Recheck the new interval and rely on PostgreSQL exclusion as the final conflict barrier.
-- Cancellation sets `status=CANCELLED`; it never deletes the row.
-- Return specific errors: 400 invalid data, 401 unauthenticated, 403 non-owner, 404 unknown resource/booking, 409 overlap, invalid lifecycle, or blocked resource deactivation/delete.
+### BOOK-05 — Edit or reschedule own reservation
 
----
+**Endpoint:** `PATCH /api/reservations/[reservationId]`
 
-## 11. HTTP API specification
+Only the original creator may modify purpose or time, and only when the record is currently `CONFIRMED` and its **existing** `startAt` is strictly later than now. Validate the proposed interval, active resource and overlap policy. A rejected change must leave the original reservation unchanged. The booking owner is immutable.
 
-All endpoints use JSON except `204 No Content`; authenticated endpoints require the signed cookie. Bracketed segments are Next.js App Router dynamic segments.
+### BOOK-06 — Cancel own reservation
 
-| Method | Route | Access | Behavior | Priority |
-|---|---|---|---|---|
-| `POST` | `/api/auth/register` | Public | Register | P0 |
-| `POST` | `/api/auth/login` | Public | JWT login/cookie | P0 |
-| `POST` | `/api/auth/logout` | Session | Clear cookie | P0 |
-| `GET` | `/api/auth/me` | Session | Current public user profile | P0 |
-| `GET` | `/api/resources` | Session | List all resources | P0 |
-| `POST` | `/api/resources` | Session | Create resource | P0 |
-| `GET` | `/api/resources/[resourceId]` | Session | Resource details | P0 |
-| `PATCH` | `/api/resources/[resourceId]` | Session | Edit/activate/deactivate resource | P0 |
-| `DELETE` | `/api/resources/[resourceId]` | Session | Delete only if never reserved | P0 |
-| `GET` | `/api/resources/[resourceId]/availability` | Session | Check interval availability | P0 |
-| `GET` | `/api/reservations` | Session | All/Mine bookings (`scope=all\|mine`) | P0 |
-| `POST` | `/api/reservations` | Session | Create booking for current user | P0 |
-| `GET` | `/api/reservations/[reservationId]` | Session | View any booking | P0 |
-| `PATCH` | `/api/reservations/[reservationId]` | **Creator only** | Change purpose/time of future booking | P0 |
-| `POST` | `/api/reservations/[reservationId]/cancel` | **Creator only** | Cancel future booking | P0 |
-| `GET` | `/api/dashboard` | Session | Small stats summary | P1 |
+**Endpoint:** `POST /api/reservations/[reservationId]/cancel`
 
-**No** `DELETE /api/reservations` endpoint. **No** admin routes or role arguments. `scope=mine` is a filter and not a separate permission. Queries returning reservations should include a *limited nested user selection* such as `user: { select: { id: true, name: true } }`, not a raw User row containing passwordHash.
+Cancellation is allowed only for the creator of a future confirmed reservation. Set the stored status to `CANCELLED` without deleting the record. The released interval becomes available for new confirmed bookings. Ongoing, completed and already cancelled reservations are not editable or cancellable.
 
-### 11.1 Representative requests
+### BOOK-07 — Availability lookup
 
-**`POST /api/resources`**
+**Endpoint:** `GET /api/resources/[resourceId]/availability` with a validated requested interval.
+
+Return whether the resource is active and whether any confirmed reservation overlaps the requested interval. Include informative conflicts when useful, but avoid returning private user fields. Availability responses are advisory; the final database insert must independently enforce the exclusion constraint.
+
+### BOOK-08 — Reservation lifecycle matrix
+
+| Booking state        | Visible to authenticated users | Creator can edit/cancel |       Blocks availability        |
+| -------------------- | :----------------------------: | :---------------------: | :------------------------------: |
+| Future, confirmed    |              Yes               |           Yes           |               Yes                |
+| Ongoing, confirmed   |              Yes               |           No            |          Yes until end           |
+| Completed, confirmed |              Yes               |           No            | Only for its historical interval |
+| Cancelled            |              Yes               |           No            |                No                |
+
+## 8. Database schema and entity relationships
+
+### 8.1 Entities
+
+The relational model comprises three entities: `User`, `Resource` and `Reservation`. The project ER diagram must describe the same model and cardinalities as the Prisma schema.
+
+**User**
+
+| Field          | Type                     | Rule                         |
+| -------------- | ------------------------ | ---------------------------- |
+| `id`           | UUID                     | Primary key                  |
+| `name`         | Text                     | Required                     |
+| `email`        | Text                     | Required, unique, normalized |
+| `passwordHash` | Text                     | Required, server-only        |
+| `createdAt`    | Timestamp with time zone | Creation timestamp           |
+
+**Resource**
+
+| Field         | Type                     | Rule                          |
+| ------------- | ------------------------ | ----------------------------- |
+| `id`          | UUID                     | Primary key                   |
+| `name`        | Text                     | Required                      |
+| `type`        | `ResourceType`           | `MEETING_ROOM` or `EQUIPMENT` |
+| `location`    | Text                     | Required                      |
+| `capacity`    | Integer, nullable        | Positive when supplied        |
+| `description` | Text, nullable           | Optional                      |
+| `isActive`    | Boolean                  | Defaults to true              |
+| `createdById` | UUID                     | Required foreign key to User  |
+| `createdAt`   | Timestamp with time zone | Creation timestamp            |
+| `updatedAt`   | Timestamp with time zone | Updated on modification       |
+
+**Reservation**
+
+| Field        | Type                     | Rule                                           |
+| ------------ | ------------------------ | ---------------------------------------------- |
+| `id`         | UUID                     | Primary key                                    |
+| `userId`     | UUID                     | Required foreign key to User; immutable owner  |
+| `resourceId` | UUID                     | Required foreign key to Resource               |
+| `purpose`    | Text                     | Required                                       |
+| `startAt`    | Timestamp with time zone | Beginning of interval                          |
+| `endAt`      | Timestamp with time zone | End of interval; greater than start            |
+| `status`     | `ReservationStatus`      | `CONFIRMED` or `CANCELLED`; defaults confirmed |
+| `createdAt`  | Timestamp with time zone | Creation timestamp                             |
+
+### 8.2 Relationships and cardinalities
+
+- One User **creates** zero or many Resources; a Resource has exactly one original creator.
+- One User **makes** zero or many Reservations; a Reservation has exactly one creator/owner.
+- One Resource **has** zero or many Reservations; a Reservation references exactly one Resource.
+
+Resource and reservation foreign keys use `onDelete: Restrict` so the system cannot erase records needed to preserve attribution or booking history. The application does not implement user deletion in the MVP.
+
+### 8.3 Indexes and database safeguards
+
+Recommended indexes follow the implemented schema:
+
+- User: unique email index.
+- Resource: `createdById`, `isActive`.
+- Reservation: `(resourceId, startAt)`, `(userId, startAt)`, `(status, startAt)`.
+- Reservation: PostgreSQL GiST exclusion constraint on resource ID and confirmed time interval.
+
+A `CHECK ("endAt" > "startAt")` constraint may be added to the migration for defense in depth; ensure schema and migration documentation record any additional database constraints.
+
+### 8.4 Neon and Prisma configuration
+
+Prisma 7 uses the generated client from `src/generated/prisma/`, with runtime access through the Neon adapter in `src/lib/prisma.ts`. The generated folder is not committed to Git; run Prisma generation on installation and in CI.
+
+Use separate environment variables:
+
+| Variable       | Use                                                                |
+| -------------- | ------------------------------------------------------------------ |
+| `DATABASE_URL` | Runtime Neon database connection (pooled connection as configured) |
+| `DIRECT_URL`   | Prisma CLI/migration connection                                    |
+| `JWT_SECRET`   | Server-only signing secret                                         |
+
+Never commit actual connection strings or JWT secrets. Consult `docs/NeonDB_Setup_Guide.md` and `docs/Prisma_Migrations_Guide.md` for detailed configuration and environment setup.
+
+### 8.5 Migration workflow
+
+All persistent schema changes must be represented by committed, reviewed Prisma migration SQL. Database schema synchronization is not achieved by editing `schema.prisma` alone.
+
+```powershell
+npm run prisma:validate
+npm run prisma:migrate:dev -- --name descriptive_change --create-only
+```
+
+Inspect the new `prisma/migrations/<timestamp>_descriptive_change/migration.sql`, including any manually added exclusion and check constraints. After review:
+
+```powershell
+npm run prisma:migrate:deploy
+npm run prisma:generate
+npm run prisma:migrate:status
+```
+
+`prisma migrate deploy` applies all pending migrations to the configured database; confirm the environment and database before running it. Do not use `prisma db push` as the normal delivery workflow and do not silently rewrite or squash migration history. Generated client output does not imply migrations have been applied.
+
+## 9. Concurrency and consistency
+
+### 9.1 Reservation write ordering
+
+The critical invariants are that a resource cannot be booked twice for overlapping confirmed intervals and cannot be deactivated while it has a confirmed booking that is ongoing or in the future.
+
+The booking service should:
+
+1. Authenticate the caller and validate input.
+2. Confirm that the resource exists and is active.
+3. Validate the interval and provide an advisory availability check.
+4. Insert within a transaction consistent with resource lifecycle operations.
+5. Let the database exclusion constraint resolve concurrent conflicting writes.
+6. Translate recognized constraint failures to 409 and preserve other database errors as internal failures.
+
+A check-then-insert without database enforcement is insufficient because two requests can check the same free interval concurrently.
+
+### 9.2 Booking versus resource deactivation
+
+A booking insert and a resource deactivation can race even if each operation performs a normal query. Use a consistent transaction strategy, such as acquiring a lock on the relevant Resource row before either operation checks or changes reservation eligibility. Keep the same lock order across both operations. Ensure that a transaction that deactivates a resource cannot commit while an otherwise accepted booking is inserted against the same resource.
+
+The exact locking strategy must be validated using the selected Prisma/Neon adapter and an integration test. If the adapter cannot support the chosen transaction/lock arrangement, select and document a compatible strategy instead of relying on UI restrictions.
+
+### 9.3 Edit and cancellation atomicity
+
+- Apply the ownership and upcoming-status checks against the current database record, not client-submitted values.
+- For rescheduling, leave the original interval intact if validation or overlap prevention fails.
+- Cancellation updates one record's status; it does not delete related data.
+- Use fresh server time for eligibility checks and a single authoritative database operation or transaction to avoid stale-read mutations.
+- Protect against duplicate submits with a disabled loading state for usability, while relying on the server for actual correctness.
+
+## 10. HTTP API contract
+
+Next.js Route Handlers form the application HTTP API. All non-auth resource and reservation endpoints require a validated session. Use typed server-side service modules rather than embedding business rules separately in page components and handlers.
+
+### 10.1 Endpoint reference
+
+| Method | Endpoint                                   | Purpose                         | Access        |
+| ------ | ------------------------------------------ | ------------------------------- | ------------- |
+| POST   | `/api/auth/register`                       | Register user                   | Public        |
+| POST   | `/api/auth/login`                          | Set JWT cookie                  | Public        |
+| POST   | `/api/auth/logout`                         | Clear session cookie            | Authenticated |
+| GET    | `/api/auth/me`                             | Current public user profile     | Authenticated |
+| GET    | `/api/resources`                           | List resources                  | Authenticated |
+| POST   | `/api/resources`                           | Create resource                 | Authenticated |
+| GET    | `/api/resources/[resourceId]`              | Resource detail                 | Authenticated |
+| PATCH  | `/api/resources/[resourceId]`              | Edit or change active state     | Authenticated |
+| DELETE | `/api/resources/[resourceId]`              | Delete never-reserved resource  | Authenticated |
+| GET    | `/api/resources/[resourceId]/availability` | Check a requested interval      | Authenticated |
+| GET    | `/api/reservations`                        | List all reservations           | Authenticated |
+| POST   | `/api/reservations`                        | Create reservation              | Authenticated |
+| GET    | `/api/reservations/[reservationId]`        | Reservation detail              | Authenticated |
+| PATCH  | `/api/reservations/[reservationId]`        | Edit own eligible reservation   | Creator only  |
+| POST   | `/api/reservations/[reservationId]/cancel` | Cancel own eligible reservation | Creator only  |
+
+### 10.2 Example request bodies
+
+Registration:
+
+```json
+{
+  "name": "Alice Example",
+  "email": "alice@example.com",
+  "password": "example-password",
+  "confirmPassword": "example-password"
+}
+```
+
+Create resource:
 
 ```json
 {
   "name": "Meeting Room A",
   "type": "MEETING_ROOM",
-  "location": "Second Floor",
-  "capacity": 10,
-  "description": "Projector and whiteboard"
+  "location": "First Floor",
+  "capacity": 8,
+  "description": "Shared meeting room"
 }
 ```
 
-**`POST /api/reservations`**
+Create reservation:
 
 ```json
 {
-  "resourceId": "<resource-uuid>",
-  "purpose": "Sprint planning",
-  "startAt": "2026-10-14T04:30:00.000Z",
-  "endAt": "2026-10-14T05:30:00.000Z"
+  "resourceId": "00000000-0000-0000-0000-000000000001",
+  "purpose": "Project meeting",
+  "startAt": "2026-10-20T09:00:00+05:30",
+  "endAt": "2026-10-20T10:00:00+05:30"
 }
 ```
 
-**`PATCH /api/reservations/[reservationId]`**
+These examples illustrate the request format, not seeded database records or guaranteed existing UUIDs. Convert valid ISO date-times to UTC instants for storage and comparisons.
 
-```json
-{
-  "purpose": "Updated sprint planning",
-  "startAt": "2026-10-14T05:30:00.000Z",
-  "endAt": "2026-10-14T06:30:00.000Z"
-}
-```
+### 10.3 Error and response rules
 
-These JSON examples show request shapes; the specific dates are illustrative and may be past by implementation/testing time. **Generate future intervals dynamically in tests/demo**. Reservation request bodies never contain `userId`.
+| HTTP status | Use                                                                               |
+| ----------- | --------------------------------------------------------------------------------- |
+| 200         | Successful reads and modifications                                                |
+| 201         | Created resource, user or reservation                                             |
+| 204         | Successful operation without body, including eligible resource deletion           |
+| 400         | Invalid input or malformed interval                                               |
+| 401         | No valid authenticated session / invalid login credentials                        |
+| 403         | Authenticated user lacks ownership for attempted mutation                         |
+| 404         | Requested resource or reservation does not exist                                  |
+| 409         | Duplicate email, conflicting reservation, forbidden resource lifecycle transition |
+| 500         | Unexpected internal error; no secrets or raw SQL in response                      |
 
-### 11.2 Response conventions
+Return predictable error payloads with a short machine-friendly code and readable message. Do not leak password hashes, JWTs, connection strings, detailed stack traces, or internal query statements. Use correct HTTP methods and validate path IDs, query parameters and bodies with Zod.
 
-- Success list: `{ "data": [...] }` and optional pagination metadata.
-- Success item: `{ "data": { ... } }`.
-- Error: `{ "error": { "code": "RESERVATION_CONFLICT", "message": "This resource is already reserved for the selected time." } }`.
-- `400` validation, `401` authentication, `403` owner check, `404` not found, `409` conflict/lifecycle, `500` unexpected error without leaking stack traces.
-- Document server-side input limits and consistent date serialization in ISO-8601 UTC.
+### 10.4 Server module boundaries
 
----
+A Route Handler validates requests, obtains authenticated identity, delegates to a focused server business function, and serializes a safe response. Server services own business rules and database transactions. The same service functions may be called by Server Components, with authorization always checked before obtaining sensitive results.
 
-## 12. Frontend page and screen specification
+## 11. Frontend screens and user experience
 
-| Screen | Route | Must show / support |
-|---|---|---|
-| Login | `/login` | Email/password, validation, invalid credentials message |
-| Registration | `/register` | Name/email/password/confirm, duplicate validation |
-| Dashboard | `/dashboard` | Summary cards (P1); may redirect to Resources in P0 |
-| Resources list | `/resources` | Active/inactive items, creator name, Add Resource, view/edit/deactivate/delete eligible |
-| New resource | `/resources/new` | Validated form; all users |
-| Resource detail | `/resources/[resourceId]` | Full details, creator, availability, resource reservations |
-| Edit resource | `/resources/[resourceId]/edit` | Prefilled form; all users |
-| Reservations list | `/reservations` | All records, creator name, status, All/Mine filter |
-| New reservation | `/reservations/new` | Resource picker, start/end, purpose, availability feedback |
-| Reservation detail | `/reservations/[reservationId]` | Read-only for non-owners; edit/cancel for owner + future confirmed |
+### 11.1 Public landing page
 
-**UI layout notes:**
+The first landing page is deliberately minimal. It introduces ReserveHub, explains shared resource reservations, and links to signup/login. It displays no mock reservations, business statistics, testimonials or dynamic user information. The public header and footer are instantiated **inside `src/app/page.tsx`**. A later visual redesign may use additional landing-only components in `src/app/components/`.
 
-- Global header with brand, navigation, current user's name and Logout.
-- Use shadcn/ui **Button, Input, Label, Select, Card, Badge, Dialog**; basic Table if helpful.
-- Use an HTML `datetime-local` input or simple Date/Time controls; do not spend time building a large calendar component.
-- Client may hide edit/cancel buttons for non-owners, but server always checks ownership.
-- For future confirmed reservations owned by the user, show **Edit** and **Cancel** with confirmation.
-- For other users' reservations, show **"View only — created by [name]"**.
-- For ongoing/completed/cancelled bookings, hide or disable mutation controls and show why.
-- For resources with booking history, show **Deactivate** rather than Delete; resource lifecycle restrictions remain enforced on server.
-- If an active booking blocks deactivation, show a useful conflict message instead of silently deactivating.
+### 11.2 Login and signup
 
-### 12.1 Example reservation table
+Both pages have focused, centered form layouts with no application header or footer. Form components are Client Components kept in their corresponding page-level `components/` directory. Each outer `page.tsx` remains a Server Component exporting metadata.
 
-| Resource | Reserved by | Start | End | Status | Actions for signed-in user |
-|---|---|---|---|---|---|
-| Room A | Alice | Tomorrow, 9:00 | Tomorrow, 10:00 | Upcoming | Alice: Edit/Cancel; others: View |
-| Projector A | Bob | Today, 10:00 | Today, 11:00 | Completed | View |
-| Room B | Alice | Tomorrow, 13:00 | Tomorrow, 14:00 | Cancelled | View |
+Login provides email and password inputs, form validation, loading and server-error feedback. Signup provides name, email, password and password confirmation. Invalid input and duplicate email errors are shown without exposing implementation details. After registration, navigate to login; after successful login, navigate to dashboard.
 
-### 12.2 Responsiveness and accessibility
+### 11.3 Management dashboard
 
-Labels must match inputs, keyboard focus must be visible, dialogs should have accessible titles, errors should have readable contrast, and large tables should remain usable on mobile (stack rows into cards if necessary). Choose a restrained consistent visual style; functionality takes precedence over complex dashboard layouts.
+The `/dashboard` page is the authenticated entry point. Its required initial view consists of a clear page heading, concise description and two direct navigation choices: Resources and Reservations. Additional metrics are optional and must be computed from real backend data. Dashboard-specific components belong in `src/app/dashboard/components/`.
 
----
+### 11.4 Resources
 
-## 13. Application architecture and stack
+The catalogue displays the resource name, type, location, creator and active status. Detail screens show descriptive information and relevant reservation/availability context. The create/edit form enforces required fields. Eligible actions include edit, deactivate/reactivate, and deletion of never-reserved resources with clear confirmation and error feedback. All resource UI components, irrespective of the subroute using them, belong in the one `src/app/resources/components/` directory.
 
-| Layer | Choice | Reason |
-|---|---|---|
-| Full stack | **Next.js App Router** | Required; one deployable codebase |
-| Language | TypeScript | Required; end-to-end types |
-| UI styling | Tailwind CSS + basic shadcn/ui | Faster consistent components |
-| Forms and validation | React Hook Form (optional) + Zod | Practical form validation and shared rules |
-| Auth | `jose`, `bcryptjs`, HTTP-only cookie | Simple, explainable JWT flow |
-| Database | PostgreSQL via Neon | Required; persistent and familiar |
-| ORM | Prisma | Familiar schema, queries, migrations |
-| Tests | Jest (or Vitest if simpler), targeted API tests | Core business and security checks |
-| Version control | Git + GitHub | Required |
-| Hosting | Local is mandatory; Vercel is optional | Assessment explicitly requires local run capability |
+### 11.5 Reservations
 
-### 13.1 Data flow
+The reservations list shows all bookings and their creators, resources, date-time interval and lifecycle label. An owner may modify or cancel their own future confirmed bookings; other bookings display read-only actions. Reservation form validation checks dates and purpose, then handles 409 conflicts without discarding the input fields. All reservation-specific UI components belong in `src/app/reservations/components/`.
+
+Example reservation table:
+
+| Resource    | Created by | Start        | End        | Status    | Visible actions                       |
+| ----------- | ---------- | ------------ | ---------- | --------- | ------------------------------------- |
+| Room A      | Alice      | Future start | Future end | Upcoming  | Alice: Edit/Cancel; other users: View |
+| Projector A | Bob        | Past start   | Past end   | Completed | View                                  |
+| Room B      | Alice      | Future start | Future end | Cancelled | View                                  |
+
+These are presentation examples, not stored sample records or automatically available application data.
+
+### 11.6 Shared navigation
+
+The application header provides Dashboard, Resources, Reservations and an authenticated logout action, with the current user's display name when available. Because the same header appears on multiple functional pages it belongs in `src/components/layout/app-header.tsx`. Individual pages import it directly; do not introduce a separate protected route-group layout solely to share the header. It is acceptable for each page to include the same header import for clarity.
+
+The public landing header and footer are landing-specific and therefore belong in `src/app/components/`, not `src/components/layout/`, unless additional public pages begin reusing them.
+
+### 11.7 Error and loading states
+
+- On a protected page, the server verifies the session before returning sensitive content.
+- Client navigation may show a brief session-loading message while the auth context checks `/api/auth/me`.
+- Show explicit 401/403/404/409 responses and relevant recovery actions.
+- Keep partially completed form values after recoverable server errors.
+- Provide confirmation for destructive actions, and show why lifecycle restrictions prevent certain actions.
+- Ensure keyboard use, accessible error text and responsive layout.
+
+## 12. Repository architecture and folders
+
+The following structure reflects the planned complete application. Some files will be introduced in later issue branches and are not required to exist at the time this document is written.
 
 ```text
-Browser / React pages
-        |
-Next.js App Router + Route Handlers
-        |
-requireUser() / Zod input validation
-        |
-Resource Service / Reservation Service
-        |
-Prisma client + PostgreSQL transactions
-        |
-Neon PostgreSQL (+ no-overlap exclusion constraint)
-```
-
-**Architecture decision:** No NestJS backend, REST gateway, Dockerized microservices, Redis or background worker. Route handlers call reusable server-side business modules, avoiding duplicating logic inside page components. Do not use dynamic imports for app modules; keep imports at the top.
-
-### 13.2 Proposed folder structure
-
-```text
-reservehub/
-├── app/
-│   ├── (auth)/
-│   │   ├── login/page.tsx
-│   │   └── register/page.tsx
-│   ├── (protected)/
-│   │   ├── layout.tsx
-│   │   ├── dashboard/page.tsx                  # P1
+reserve-hub/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── docs/
+│   ├── ReserveHub_Implementation_Plan.md
+│   ├── ReserveHub_ER_Diagram.drawio
+│   ├── NeonDB_Setup_Guide.md
+│   └── Prisma_Migrations_Guide.md
+├── prisma/
+│   ├── schema.prisma
+│   └── migrations/
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx                  # Fonts, metadata, AuthProvider; no header/footer
+│   │   ├── globals.css
+│   │   ├── page.tsx                    # Public landing page; Server Component
+│   │   ├── components/                 # Landing-only components, header and footer
+│   │   ├── login/
+│   │   │   ├── page.tsx                # Server Component, page metadata
+│   │   │   └── components/             # Login form and login-only UI
+│   │   ├── signup/
+│   │   │   ├── page.tsx                # Server Component, page metadata
+│   │   │   └── components/             # Signup form and signup-only UI
+│   │   ├── dashboard/
+│   │   │   ├── page.tsx                # Server Component + server auth check
+│   │   │   └── components/             # Dashboard-only UI
 │   │   ├── resources/
 │   │   │   ├── page.tsx
+│   │   │   ├── components/             # ALL resources feature UI components
 │   │   │   ├── new/page.tsx
 │   │   │   └── [resourceId]/
 │   │   │       ├── page.tsx
 │   │   │       └── edit/page.tsx
-│   │   └── reservations/
-│   │       ├── page.tsx
-│   │       ├── new/page.tsx
-│   │       └── [reservationId]/page.tsx
-│   ├── api/
-│   │   ├── auth/{register,login,logout,me}/route.ts   # conceptual folder shorthand
-│   │   ├── resources/route.ts
-│   │   ├── resources/[resourceId]/route.ts
-│   │   ├── resources/[resourceId]/availability/route.ts
-│   │   ├── reservations/route.ts
-│   │   ├── reservations/[reservationId]/route.ts
-│   │   └── reservations/[reservationId]/cancel/route.ts
-│   ├── layout.tsx
-│   └── globals.css
-├── components/
-│   ├── ui/                                    # shadcn/ui components
-│   ├── resources/
-│   ├── reservations/
-│   └── layout/
-├── lib/
-│   ├── auth.ts                                # sign/verify + requireUser
-│   ├── db.ts                                  # Prisma singleton / adapter
-│   ├── validators/
-│   ├── services/
-│   │   ├── resources.ts
-│   │   └── reservations.ts
-│   └── errors.ts
-├── prisma/
-│   ├── schema.prisma
-│   ├── migrations/
-│   └── seed.ts
-├── docs/
-│   ├── ReserveHub_Requirements_Implementation_Plan_v3.md
-│   ├── ReserveHub_Final_Chen_ER_Diagram.drawio
-│   └── ReserveHub_Final_Chen_ER_Diagram.svg
-├── tests/
+│   │   ├── reservations/
+│   │   │   ├── page.tsx
+│   │   │   ├── components/             # ALL reservations feature UI components
+│   │   │   ├── new/page.tsx
+│   │   │   └── [reservationId]/page.tsx
+│   │   └── api/
+│   │       ├── auth/
+│   │       │   ├── register/route.ts
+│   │       │   ├── login/route.ts
+│   │       │   ├── logout/route.ts
+│   │       │   └── me/route.ts
+│   │       ├── resources/
+│   │       │   ├── route.ts
+│   │       │   └── [resourceId]/
+│   │       │       ├── route.ts
+│   │       │       └── availability/route.ts
+│   │       └── reservations/
+│   │           ├── route.ts
+│   │           └── [reservationId]/
+│   │               ├── route.ts
+│   │               └── cancel/route.ts
+│   ├── components/
+│   │   ├── ui/                         # Reusable shadcn/ui components
+│   │   ├── auth/
+│   │   │   └── protected-route.tsx     # Shared client navigation guard
+│   │   └── layout/
+│   │       └── app-header.tsx          # Shared across authenticated pages
+│   ├── context/
+│   │   └── auth-context.tsx           # Client AuthProvider and useAuth
+│   ├── generated/
+│   │   └── prisma/                    # Generated; not committed
+│   └── lib/
+│       ├── prisma.ts                   # Prisma adapter / singleton
+│       ├── utils.ts
+│       ├── auth/                       # JWT and requireUser server helpers
+│       ├── validators/                 # Shared Zod validation
+│       └── services/                   # Server business functions
 ├── .env.example
-├── README.md
-└── package.json
+├── components.json
+├── package.json
+├── package-lock.json
+├── prisma.config.ts
+└── README.md
 ```
 
-**Note:** The `{register,login,...}` path line illustrates separate folders; do **not** literally create a folder with braces. Use separate `app/api/auth/register/route.ts`, `login/route.ts`, etc.
+**Structural requirements:**
 
-### 13.3 Neon connectivity / Prisma risk
+1. Keep all `page.tsx` files as Server Components with metadata exports. Put interactivity into imported Client Components.
+2. Use exactly one `components/` folder per major feature route. No additional `components/` directories inside nested resource or reservation subroutes.
+3. Place only truly cross-feature reusable UI under `src/components/`.
+4. Place the app-wide `AuthProvider` inside the root layout, but import headers/footers at the page level.
+5. Wrap only authenticated pages with `ProtectedRoute`, and perform the independent server-side authorization check before protected data access.
+6. Do not add route groups, separate layout shells or extra architectural abstractions to solve straightforward page composition.
+7. Keep authentication, Prisma and service logic server-side where appropriate; no server secrets in browser bundles.
 
-The developer previously experienced blocked direct connections on PostgreSQL port 5432. **Check real database connectivity and migrations at the very start**. If the chosen network blocks standard connections, prefer a supported Neon serverless driver/Prisma adapter or an already-tested migration workflow rather than introducing a second backend. Do not assume an adapter solves Prisma CLI migrations automatically. Avoid changing database architecture at the last minute; prove read/write plus migration before building screens.
-
----
-
-## 14. Security decisions and known limitations
-
-1. **JWT:** server-signed, stored in secure HTTP-only cookie; 12-hour expiration; verify on each protected action.
-2. **Passwords:** bcryptjs hash only; never log or return them.
-3. **CSRF:** `SameSite=Lax`, proper origin validation for mutations and safe JSON requests.
-4. **Server-side authorization:** only creator may change/cancel their reservation; all user and resource IDs derived from trusted sources.
-5. **Safe database access:** Prisma and parameterized SQL; never interpolate user strings into raw queries.
-6. **Resource permissions:** all authenticated users can change resources; this is a **deliberate business simplification**, not robust organization-wide authorization.
-7. **Public reservation details within organization:** all registered users can see booking metadata and creator names. Never return personal email/passwordHash in reservation reads.
-8. **No general user deletion:** FK-referenced history must remain valid.
-9. **Known production gaps:** no email verification, login throttling, fine-grained RBAC, audit trail, JWT revocation, fraud prevention or advanced monitoring. These are explicitly future improvements.
-
----
-
-## 15. Non-functional requirements
-
-| ID | Requirement | Validation |
-|---|---|---|
-| NFR-01 | Data survives restart | Register/create/refresh and re-read |
-| NFR-02 | Same-resource overlap is impossible for confirmed bookings | Database constraint + concurrent test |
-| NFR-03 | Server validates all mutations | Bad requests return 400/409 |
-| NFR-04 | Protected APIs require JWT | Missing/expired cookie → 401 |
-| NFR-05 | Creator-only reservation changes | Other account → 403 |
-| NFR-06 | Resource deletion preserves reservation history | FK restrict + 409 |
-| NFR-07 | Resource deactivation preserves ongoing/future bookings | 409 on active bookings |
-| NFR-08 | Consistent UTC timestamps and Colombo display | Manually verify conversion |
-| NFR-09 | UI works on laptop and phone widths | Manual layout check |
-| NFR-10 | Clear errors/loading/empty states | Manual acceptance |
-| NFR-11 | No secrets committed or logged | `.gitignore` + source review |
-| NFR-12 | Local setup is reproducible using README | Clean install smoke test |
-| NFR-13 | Business rules reside in server modules | Code review |
-| NFR-14 | Data design reflects submitted Chen ER | Schema-to-diagram verification |
-
----
-
-## 16. Exact development task backlog
-
-**P0 items are required.** P1 items may be skipped if time is short.
-
-| Task | Priority | Implementation | Definition of done | Depends on |
-|---|---|---|---|---|
-| **T-01** | P0 | Create Next.js App Router TypeScript project, Tailwind, shadcn/ui | Project runs locally | — |
-| **T-02** | P0 | Set up repository, environment example, lint/build commands | Clean Git state, no secrets | T-01 |
-| **T-03** | P0 | Configure Prisma/Neon; test DB connection | Migration and round-trip query work | T-01 |
-| **T-04** | P0 | Implement 3 database entities/enums/relations | Schema and Chen ER agree | T-03 |
-| **T-05** | P0 | Apply PostgreSQL no-overlap and FK constraints | DB rejects overlapping confirmed writes | T-04 |
-| **T-06** | P0 | Build JWT/password helpers and validation | Sign/verify/hash unit tests | T-04 |
-| **T-07** | P0 | Build register/login/logout/me APIs and UI | Two independent users log in | T-06 |
-| **T-08** | P0 | Protected shell and `requireUser` helpers | Anonymous requests blocked | T-07 |
-| **T-09** | P0 | Resource list/detail/create service/API/UI | Any signed-in user can add and view | T-08 |
-| **T-10** | P0 | Resource edit, deactivate/reactivate, safe hard-delete | History/deactivation rules pass tests | T-09 |
-| **T-11** | P0 | Availability lookup | Correct result for occupied/free intervals | T-05, T-09 |
-| **T-12** | P0 | Reservation create service/API/UI | Slot booked under signed-in user | T-11 |
-| **T-13** | P0 | List/detail All/Mine reservations with creator display | Any user can read; private fields hidden | T-12 |
-| **T-14** | P0 | Owner-only edit and cancel API/UI | Other owner gets 403; future rule enforced | T-13 |
-| **T-15** | P0 | Race-safety and edge-case tests | One winner on concurrent same-slot booking | T-14 |
-| **T-16** | P0 | Error states, responsive polish, input usability | Complete journeys usable | T-15 |
-| **T-17** | P0 | README, ER upload/link, verification checklist | New developer can run app | T-16 |
-| **T-18** | P0 | Record 3–5-minute demonstration | Video clearly illustrates core design | T-17 |
-| **T-19** | P0 | Submit correct GitHub/video/ER links | Submission form completed on time | T-18 |
-| **T-20** | P1 | Dashboard cards and upcoming reservations | Summary accurate | T-13 |
-| **T-21** | P1 | Resource and reservation filters/search | Search works with no extra backend complexity | T-13 |
-| **T-22** | P1 | Additional tests / styling | Improves confidence without delaying submission | T-15 |
-
-### 16.1 Work packages and dependency path
+### 12.1 Data flow
 
 ```text
-T-01/T-02 → T-03/T-04/T-05 → T-06/T-07/T-08
-                                |
-                                v
-                    T-09/T-10 (Resources)
-                                |
-                                v
-                    T-11/T-12 (Booking)
-                                |
-                                v
-                  T-13/T-14 (View/Ownership)
-                                |
-                                v
-                    T-15/T-16 (Tests/UI)
-                                |
-                                v
-                 T-17/T-18/T-19 (Submission)
+Browser / Server Components
+          |
+Next.js page and Route Handler
+          |
+Validated session + Zod input checks
+          |
+Resource / Reservation server services
+          |
+Prisma Client + transaction / database safeguards
+          |
+Neon PostgreSQL
 ```
 
-Do not implement all pages before testing one working end-to-end create/read flow. Commit small working slices to GitHub.
+Server rendering should use server-side services directly where suitable. Client Components call Route Handlers for interactive mutations; both paths use the same business and authorization rules.
 
----
+## 13. Security, validation and error handling
 
-## 17. Three-day schedule (13–15 October 2026)
+### 13.1 Authentication boundaries
 
-### Day 1 — Tuesday, 13 October: foundation and resource management
+Every protected server page must verify the session before issuing sensitive queries or serializing nonpublic data. The UI may use `ProtectedRoute` for redirect behavior, but client-side hooks cannot prevent an unauthenticated user from requesting a server route or API directly.
 
-- [ ] Create repository and Next.js + Tailwind + shadcn/ui project.
-- [ ] Resolve Prisma/Neon connection and verify migration pipeline first.
-- [ ] Create User, Resource and Reservation tables, FKs, enums, indexes.
-- [ ] Add and verify the no-overlap exclusion constraint.
-- [ ] Implement registration/login/logout/JWT cookie and protected shell.
-- [ ] Complete resource listing and creation; edit/deactivate/delete if time allows.
-- [ ] Commit tested changes.
+For example, a protected Server Component should authenticate and redirect before loading feature data:
 
-**Exit criterion:** Two users can register/login; resource information persists; schema and migration work; no role field exists.
+```tsx
+import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { getCurrentUser } from "@/lib/auth/session";
+import { ProtectedRoute } from "@/components/auth/protected-route";
+import { AppHeader } from "@/components/layout/app-header";
 
-### Day 2 — Wednesday, 14 October: business flow and authorization
+export const metadata: Metadata = {
+  title: "Dashboard",
+  description: "Manage resources and reservations.",
+};
 
-- [ ] Finish resource lifecycle API/UI and creator attribution.
-- [ ] Implement availability check and booking creation.
-- [ ] Implement all-reservation listing and My reservations filter.
-- [ ] Display reservation creator name.
-- [ ] Implement owner-only edit/reschedule and future-only cancel.
-- [ ] Test overlapping/adjacent periods and conflicting concurrent submissions.
-- [ ] Test resource deletion/deactivation rules and booking-vs-deactivation safety.
+export default async function DashboardPage() {
+  const user = await getCurrentUser();
 
-**Exit criterion:** The complete authenticated reservation journey works, and User B cannot edit or cancel User A's bookings.
+  if (!user) {
+    redirect("/login");
+  }
 
-### Day 3 — Thursday, 15 October: finish and submit
-
-- [ ] Resolve bugs from the end-to-end smoke test.
-- [ ] Test security edge cases, error messages, refresh and mobile layout.
-- [ ] Run lint/type-check/build and focused tests.
-- [ ] Finalize README and environment/setup instructions.
-- [ ] Commit updated `.drawio` and `.svg`, confirm shareable links.
-- [ ] Add simple dashboard only if all P0 features are stable.
-- [ ] Record/edit/check the **3–5 minute video**.
-- [ ] Submit GitHub, ER and video links with the correct application email.
-
-**Target:** Submit before approximately **10 PM Sri Lanka time** on October 15, allowing a buffer before the 11:59 PM hard deadline.
-
-### 17.1 Fallback plan when behind schedule
-
-1. **Never drop** persistent storage, a working resource list/create flow, reservation creation, and double-booking prevention.
-2. Keep authentication and owner-only reservation mutation checks; simplify the UI rather than security.
-3. If short on time, remove dashboard, advanced filters, and styling work.
-4. If the resource activation/deletion lifecycle is difficult, prefer a smaller **well-tested** safe implementation and document the exact missing path; do not silently violate referential integrity.
-5. Preserve at least enough time to produce the **mandatory** README, ER link, video and submission.
-
----
-
-## 18. Automated and manual test plan
-
-### 18.1 Authentication / authorization
-
-- [ ] **AUTH-T01:** Valid registration persists with hashed password.
-- [ ] **AUTH-T02:** Duplicate normalized email is rejected.
-- [ ] **AUTH-T03:** Invalid registration input rejected.
-- [ ] **AUTH-T04:** Login succeeds with correct password; wrong one returns 401.
-- [ ] **AUTH-T05:** Missing/tampered/expired JWT rejected.
-- [ ] **AUTH-T06:** Logout clears cookie.
-- [ ] **AUTH-T07:** Signup body cannot set `role` or override saved User fields.
-- [ ] **AUTH-T08:** Spoofed `userId` on booking/create resource cannot change creator.
-- [ ] **AUTH-T09:** User A and User B can view all bookings.
-- [ ] **AUTH-T10:** User B cannot edit/cancel User A's booking (403) even via manual requests.
-- [ ] **AUTH-T11:** Valid owner of **ongoing/completed/cancelled** booking cannot mutate it.
-- [ ] **AUTH-T12:** PasswordHash/email not leaked in booking API responses.
-
-### 18.2 Resource tests
-
-- [ ] **RES-T01:** Any authenticated user creates a resource.
-- [ ] **RES-T02:** Invalid name/type/location/capacity rejected.
-- [ ] **RES-T03:** Another user can edit resource, but original creator attribution remains.
-- [ ] **RES-T04:** Unused resource hard-deletes successfully.
-- [ ] **RES-T05:** Resource with even **cancelled** history cannot hard-delete.
-- [ ] **RES-T06:** Resource with completed-only reservations can be deactivated.
-- [ ] **RES-T07:** Resource with ongoing/future confirmed booking cannot deactivate.
-- [ ] **RES-T08:** Inactive resource rejects new bookings; reactivation restores ability.
-- [ ] **RES-T09:** Concurrent delete/booking cannot leave dangling FK records.
-
-### 18.3 Reservation and availability tests
-
-- [ ] **BOOK-T01:** Owner creates a valid future booking and name appears in listing.
-- [ ] **BOOK-T02:** Adjacent bookings for same resource are allowed.
-- [ ] **BOOK-T03:** Overlapping bookings for same resource rejected (409).
-- [ ] **BOOK-T04:** Same time for **different** resources allowed.
-- [ ] **BOOK-T05:** Two concurrent same-resource/time writes → only one succeeds.
-- [ ] **BOOK-T06:** Invalid/missing/past/zero-length/negative interval rejected.
-- [ ] **BOOK-T07:** Cancelled booking does not block same slot.
-- [ ] **BOOK-T08:** Owner reschedules future booking successfully.
-- [ ] **BOOK-T09:** Owner reschedule into occupied interval fails without changing old row.
-- [ ] **BOOK-T10:** Non-owner edit/cancel fails with 403; read is still allowed.
-- [ ] **BOOK-T11:** Future cancellation changes stored status but preserves record.
-- [ ] **BOOK-T12:** Ongoing/completed booking cannot be cancelled or edited.
-- [ ] **BOOK-T13:** Availability result agrees with successful booking writes.
-- [ ] **BOOK-T14:** Resource deactivation and booking race obey active-booking rule.
-- [ ] **BOOK-T15:** Stored/derived lifecycle status is correct at boundaries.
-
-### 18.4 UI, build and documentation
-
-- [ ] Register → login → add resource → reserve → list → edit → cancel works in browser.
-- [ ] Second browser/private session sees the first account's reservation but cannot edit it.
-- [ ] Resource status and creator display clearly.
-- [ ] All error messages are actionable; forms do not lose data after 409.
-- [ ] Works on desktop and mobile-size viewport.
-- [ ] ESLint and production build succeed.
-- [ ] README instructions checked from a clean environment, or steps precisely recorded.
-- [ ] Draw.io diagram opens successfully and shows 3 entities/3 relationships.
-- [ ] Demo video is between 3 and 5 minutes and all shared links can be opened.
-
-**Testing policy:** Automated tests should cover overlap, ownership, lifecycle and auth helpers first. Manual acceptance is acceptable for visual polish. Never claim unexecuted tests have passed.
-
----
-
-## 19. Seed data and demo scenario
-
-Seed fictional resources (e.g. Room A, Room B, Projector A) using a **known seeded demo user** (or create them through the UI); all resources must have a valid `createdById`. The UI registration flow can create a second user for the video. Avoid fixed reservation dates that will be past during the presentation; create reservations for a date safely in the future.
-
-**Demonstration scenario:**
-
-1. Register/log in as Alice and add Room A.
-2. Book Room A for an upcoming time; show successful reservation and creator name.
-3. Attempt a conflicting booking in a second user session; show a helpful 409.
-4. Show User B can **view** Alice's reservation but cannot edit/cancel it.
-5. Switch back to Alice; reschedule or cancel her future reservation.
-6. Demonstrate resource deletion if never reserved, versus deactivation if it has history.
-7. Briefly explain the 3-table Chen ER, signed JWT cookie, and database-level overlap constraint.
-
----
-
-## 20. README and final submission checklist
-
-### README must contain
-
-1. App name, problem statement and key features **actually implemented**.
-2. Stack versions and Node version requirement.
-3. Prerequisites: Node/npm and PostgreSQL/Neon credentials.
-4. `.env.example` keys; how to configure `DATABASE_URL`, JWT secret, and app base URL without committing secrets.
-5. Dependency install, Prisma client generation, migration, seeding, and local dev commands.
-6. How to run lint, build, tests and reset demo data safely.
-7. Architecture/data model overview, constraint explanation and intentional lack of RBAC.
-8. Known limitations and tradeoffs; what was not finished, if any.
-9. ER diagram and demonstration video links.
-
-### GitHub artifacts
-
-```text
-docs/
-  ReserveHub_Requirements_Implementation_Plan_v3.md
-  ReserveHub_Final_Chen_ER_Diagram.drawio
-  ReserveHub_Final_Chen_ER_Diagram.svg
-README.md
-.env.example
+  return (
+    <ProtectedRoute>
+      <AppHeader />
+      <main>{/* Authenticated dashboard content */}</main>
+    </ProtectedRoute>
+  );
+}
 ```
 
-### Required external submission
+The snippet illustrates the security boundary; `getCurrentUser` and associated APIs are implemented in the authentication work package. Do not create mock implementations that always return a user.
 
-- [ ] GitHub repository accessible to reviewers, containing complete source and README.
-- [ ] ER diagram accessible through a **shareable link** (e.g. committed `.drawio` or `.svg` in public repository).
-- [ ] **3–5 minute** screen recording accessible to reviewers.
-- [ ] Form submitted through https://forms.gle/HzQH6tB5c4edPjnn8 **before 11:59 PM, 15 Oct 2026 Sri Lanka time**.
-- [ ] Exact email address matches the original CV/application email.
-- [ ] Verify all links in a browser not signed into your personal account.
+### 13.2 Server input validation
 
-**Remember:** A local `.drawio` file is not by itself a *shareable URL*; upload it to a repository or link-accessible drive location.
+Use Zod to validate all request bodies, route parameters and query parameters, including nullable and optional resource fields, UUID IDs, date-times and enum values. Apply string trimming and length limits before persistence. Database constraints provide an additional protection layer but do not replace validation.
 
----
+### 13.3 Authorization and data disclosure
 
-## 21. Architectural decision record (ADR)
+- User identity is derived from the validated JWT, never from an arbitrary submitted `userId`.
+- Resource creators are recorded even when other users edit the resource.
+- Reservation creator ownership is checked for all edits and cancellations.
+- An authenticated user may read another user's reservation but cannot modify it.
+- API responses must omit `passwordHash`, JWTs, signing keys and internal configuration.
+- Database secrets and authentication helpers are never imported into Client Components or exposed through `NEXT_PUBLIC_*`.
 
-| Decision | Rationale | Trade-off |
-|---|---|---|
-| **ADR-01: Next.js full-stack monolith** | Required framework; fast to develop and explain | Less separation than microservices, acceptable for MVP |
-| **ADR-02: JWT in HTTP-only cookie** | Small familiar auth flow; server-rendering compatible | No token revocation/refresh in MVP |
-| **ADR-03: No RBAC** | Not assessment-required; three-day limit; reduce code and test scope | Anyone logged in can manage resources |
-| **ADR-04: Creator-only reservation mutations** | Protect users from one another without roles | Any user still sees organizational bookings |
-| **ADR-05: Resource creator for attribution only** | Display who added resources without complex ownership rules | Other users may edit those records |
-| **ADR-06: Hard delete unused resource only** | Clean up accidental entries | Resources with any history must remain |
-| **ADR-07: Soft deactivate resources with history** | Preserve booking integrity | Must block while confirmed ongoing/future bookings remain |
-| **ADR-08: Cancel instead of deleting reservations** | History and simpler lifecycle | No permanent reservation deletion |
-| **ADR-09: PostgreSQL no-overlap exclusion constraint** | Correct under concurrent requests | Needs tested SQL migration |
-| **ADR-10: Two persisted reservation statuses** | Derive completion from time; no scheduled workers | Status presentation depends on current time |
-| **ADR-11: Basic shadcn/ui only** | Consistent UI while learning a small component set | Less visual customization; easier to defend |
-| **ADR-12: No dynamic importing or backend microservices** | Small codebase, familiar debugging | Advanced separation deferred |
+### 13.4 Operational limitations
 
-### Interview explanation of omitted RBAC
+The MVP does not include email ownership verification, automated brute-force protection, global session revocation, audit history, multi-tenant organization isolation or role-based administration. These omissions must be described accurately in the README and demonstration. Protect against ordinary CSRF through origin checks for state-changing requests in addition to SameSite cookie configuration.
 
-> The assessment focused on practical resource reservations rather than organizational role management. Given the fixed deadline, I deliberately implemented one authenticated user type. All users can maintain the resource catalog and view reservations, while the server permits only a reservation's creator to reschedule or cancel it. This provided a clear security boundary without the time and testing cost of a complete RBAC system. A production rollout should introduce appropriate administrator privileges and audit logging.
+## 14. Non-functional requirements
 
-### Interview explanation of resource deletion
+| Attribute       | Requirement                                                                             | Verification                                         |
+| --------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Correctness     | Confirmed reservations never overlap for one resource, including concurrent submissions | Database constraint and concurrent integration tests |
+| Integrity       | Reservation history survives cancellation and resource lifecycle changes                | Persistence tests and foreign-key checks             |
+| Security        | Authenticated-only management and creator-only reservation mutation                     | Session, ownership and API tests                     |
+| Reliability     | Database writes are atomic across validation and state transitions                      | Failure-path and transaction tests                   |
+| Usability       | Clear forms, errors, loading states, navigation and confirmation                        | Manual desktop/mobile review                         |
+| Accessibility   | Keyboard navigation, labels, focus states and readable contrast                         | Manual keyboard and component checks                 |
+| Maintainability | Typed code, feature-local components, reusable server services                          | Code review, ESLint and TypeScript build             |
+| Reproducibility | Locked dependencies, reviewed migrations and documented environment setup               | Fresh installation and CI                            |
+| Performance     | No unnecessary browser data fetching or heavyweight visual features                     | Basic network/devtools inspection                    |
 
-> We allow hard deletion only for a resource that has never been referenced by a reservation. Historical records remain intact, including cancelled ones. A resource with history can be deactivated once it has no current or future confirmed reservation. This makes accidental entries removable without destroying booking history.
+Prioritize end-to-end functionality and sound business rules over additional charts, animations or interface embellishments.
 
----
+## 15. GitHub Actions, formatting and validation
 
-## 22. Risks and mitigation
+### 15.1 CI triggers and job
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Neon connection/migration failure | Blocks all backend functionality | Prove migrations first on Day 1; reuse known compatible driver workflow |
-| Overbooking under concurrent requests | Core scenario fails | PostgreSQL exclusion constraint + concurrent test |
-| Race between booking and deactivation | Inconsistent active-resource state | Consistent Resource row-lock transactions |
-| Unauthorized booking mutation | Cross-user data corruption | Server-side creator comparison, 403 tests |
-| Overly large UI scope | Incomplete core workflows | Basic shadcn/ui, simple forms, P1 dashboard only after P0 |
-| Confusing lifecycle rules | Incorrect deletes/cancels | Explicit BR matrix and status tests |
-| Hard deletion violates FK integrity | Missing historical resource | Restrict FK and return 409 |
-| UTC/local date confusion | Incorrect slots | Consistent instant storage and `Asia/Colombo` presentation |
-| Running out of time for delivery | Missing mandatory artifacts | Save Day 3 for README, ER, video, form |
+The workflow is `.github/workflows/ci.yml`, with one Ubuntu validation job. It runs on:
 
----
+- Pushes to `main`, `feature/**` and `fix/**`.
+- Pull requests targeting `main`.
 
-## 23. Definition of Done — final approval checklist
+The job uses Node.js 24 and npm caching, then runs the following sequence:
 
-The application is ready to submit when **all** of the following are true:
+1. Checkout repository.
+2. Install locked dependencies with `npm ci`.
+3. Generate Prisma Client using `npm run prisma:generate`.
+4. Verify formatting using `npm run format:check`.
+5. Run `npm run lint`.
+6. Run `npm run build`.
 
-- [ ] Users can register, log in and log out using secure JWT cookies.
-- [ ] A logged-in user can add and manage shared resources.
-- [ ] Original resource creator remains visible, but **does not limit resource edits**.
-- [ ] Unused resources can be deleted; resources with any booking history cannot be hard-deleted.
-- [ ] Resources with current/future confirmed bookings cannot be deactivated.
-- [ ] A user can create a booking for an active resource during a free future interval.
-- [ ] Double bookings are rejected on the database side, including concurrent submissions.
-- [ ] **All** authenticated users can view all reservations and see the creator's display name.
-- [ ] **Only the reservation creator** may edit/reschedule or cancel their **future confirmed** reservation.
-- [ ] Other users' bookings, and ongoing/completed/cancelled bookings, are **view-only**.
-- [ ] Cancelled bookings remain stored and cease blocking availability.
-- [ ] No `role` / `ADMIN` / `USER` authorization logic is implemented.
-- [ ] Schema matches the **three-entity / three-relationship Chen ER diagram**.
-- [ ] Application runs locally using README directions and the production build is successful.
-- [ ] Source is committed and relevant checks are performed.
-- [ ] GitHub URL, shareable ER URL and 3–5-minute demo URL are ready and accessible.
-- [ ] Final submission is made before the assessment deadline.
+Formatting, lint and build failures fail the job. The workflow must not run migrations against a live Neon database. Schema deployment is a separate reviewed action; a production build must not make live database changes.
 
-**Frozen product summary:** **ReserveHub v1 = JWT-authenticated collaborative resource management + organization-wide reservation visibility + creator-only future booking mutations + reliable no-overlap PostgreSQL scheduling. No RBAC.**
+### 15.2 Package scripts
 
----
+```json
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "format": "prettier --write ./",
+    "format:check": "prettier --check ./",
+    "prisma:validate": "prisma validate",
+    "prisma:format": "prisma format",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:status": "prisma migrate status"
+  }
+}
+```
 
-## Appendix A — Suggested npm commands
+The existing `.prettierignore` excludes `package.json` and `package-lock.json`; changes to that policy must be intentional. Review the diff after `npm run format` before committing generated documentation-wide formatting changes.
 
-The following `npm`, `npx` and Git commands have the same syntax in **Windows PowerShell** and **Linux Bash**.
+### 15.3 Local verification
 
-```bash
-# After scaffolding the project, install chosen dependencies.
-npm install jose bcryptjs zod @prisma/client @prisma/adapter-neon @neondatabase/serverless
-npm install -D prisma
-
-# shadcn/ui initialization and minimal components.
-npx shadcn@latest init
-npx shadcn@latest add button input label select card badge dialog table
-
-# Once package scripts and Prisma config are defined:
-npx prisma generate
-npm run dev
+```powershell
+npm ci
+npm run prisma:generate
+npm run format:check
 npm run lint
 npm run build
 ```
 
-**Important:** Do not blindly run these until the exact installed Next.js/Prisma versions, database configuration, package scripts and provider adapter have been selected and tested. Follow the project's final README. For PostgreSQL migrations, use the tested compatible CLI/database-access route; generating a Prisma client does not apply database migrations.
+Use `npm run format` to correct supported files when format checking fails; rerun the check afterward. Prisma migration tests and live database integration checks are separate from the standard build job. Review the GitHub Actions run on the relevant commit before merging.
 
-## Appendix B — References and traceability
+## 16. Development work packages
 
-- PrimeWave Lab (Pvt) Ltd, *Software Engineering Internship — Technical Assessment*, sections 2–9 (supplied PDF).
-- ReserveHub v2.0 plan and Chen ER diagram (superseded as to role and permission details).
-- Project decisions finalized on **13 October 2026**: no RBAC, collaborative resource management, conditional resource hard-delete/deactivation, global reservation read access, creator-only future edit/cancel.
-- diagrams.net native uncompressed `.drawio` uses `mxfile → diagram → mxGraphModel → root → mxCell` structure; see https://github.com/jgraph/drawio/wiki/File-Format.
+The development backlog is organized into small feature branches and issues. The table describes the full product delivery sequence; completed foundation work is retained for traceability. Work packages may be combined when this reduces development overhead without obscuring test coverage.
 
-All detailed features beyond the employer's stated technology/delivery/business problem are **our design decisions**, selected to produce an explainable and maintainable MVP before the deadline.
+| Package                               | Priority | Implementation                                                                                                           | Completion evidence                                    | Depends on                                     |
+| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ | ---------------------------------------------- |
+| RH-01 — Database foundation           | P0       | Neon project, Prisma 7 adapter/configuration, models and migration workflow                                              | Schema validation, migration status, setup guides      | Initial Next.js project                        |
+| RH-02 — UI foundation and CI          | P0       | shadcn/ui, Tailwind design tokens, Lucide, Motion, GitHub Actions, page composition and initial landing/dashboard shells | CI passes, UI layout review, build succeeds            | RH-01                                          |
+| Database overlap protection           | P0       | Reviewed SQL migration for confirmed reservation exclusion constraint                                                    | Successful positive and negative overlap tests         | RH-01                                          |
+| Authentication                        | P0       | Registration, login, logout, `/me`, JWT cookie, AuthProvider, protected routes and server session helpers                | Register/login/redirect and unauthorized-request tests | RH-01, RH-02                                   |
+| Resource listing/creation             | P0       | Service, API, list/detail UI, create form                                                                                | Records persist and appear across accounts             | Authentication                                 |
+| Resource lifecycle                    | P0       | Edit, deactivate/reactivate and never-reserved deletion                                                                  | Eligibility and foreign-key tests                      | Resources, overlap logic                       |
+| Availability and reservation creation | P0       | Time validation, availability API, creation, conflict handling                                                           | Adjacent intervals work; overlap blocked               | Authentication, resources, database constraint |
+| Reservation management                | P0       | List all, details, creator-only future edit and cancellation                                                             | Two-user ownership and lifecycle tests                 | Reservation creation                           |
+| Race safety and validation            | P0       | Concurrent writes, booking/deactivation coordination, error cases                                                        | Repeatable integration tests                           | Domain modules                                 |
+| Documentation and submission          | P0       | README, shareable ER diagram, 3–5-minute demo, final form                                                                | Accessible repository and working links                | All core functionality                         |
+| Optional enhancements                 | P1       | Search, filters, accurate dashboard summaries, visual polish and further tests                                           | Verified behavior without delaying P0                  | Stable MVP                                     |
+
+### 16.1 Implementation dependencies
+
+```text
+Project + Prisma foundation (RH-01)
+              |
+              +-- UI foundation and CI (RH-02)
+              |
+              +-- PostgreSQL overlap constraint
+              |
+              v
+JWT authentication + protected server access
+              |
+              v
+Resource create / list / edit / lifecycle
+              |
+              v
+Availability + reservation creation
+              |
+              v
+All-reservation views + owner-only edit / cancel
+              |
+              v
+Concurrency, security and browser verification
+              |
+              v
+README + ER diagram + demonstration + submission
+```
+
+### 16.2 UI foundation sequence (RH-02)
+
+1. Verify GitHub Actions, Prettier, Prisma Client generation, lint and production build.
+2. Configure the existing shadcn/ui Radix Nova preset, Geist font mapping and base UI components.
+3. Keep the root layout limited to document shell, global styles, fonts, metadata and the `AuthProvider` boundary once authentication support is ready.
+4. Implement the landing page with landing-specific header and footer imported directly into `src/app/page.tsx`.
+5. Provide a minimal dashboard with direct links to Resources and Reservations, plus a shared application header imported by the applicable pages.
+6. Keep login and signup separate from public/application navigation, without header or footer.
+7. Implement page metadata exports in all Server Component `page.tsx` files.
+8. Place feature-only interactive components in the single component directory for that feature.
+9. Verify keyboard navigation, mobile layout, formatting, lint and build. Do not falsely indicate that protected routes are functional before auth APIs exist.
+
+### 16.3 Authentication integration sequence
+
+1. Add secure JWT/password helpers and Zod validation.
+2. Implement registration, login, logout and `/me` endpoints.
+3. Add the `AuthProvider` to the root layout and refresh the context after login/logout.
+4. Add the shared `ProtectedRoute` component for authenticated navigation.
+5. In every protected Server Component, verify session and redirect before retrieving protected content.
+6. Protect all corresponding API handlers independently of the client wrapper.
+7. Confirm login redirects to `/dashboard`; authenticated login/signup visits redirect there as well.
+8. Test two browser sessions, unauthorized direct navigation, session expiry, logout and manual API requests.
+
+## 17. Delivery schedule and priorities
+
+The assessment submission deadline is **15 October 2026, 11:59 PM Sri Lanka time**. The schedule below expresses delivery priorities, not a guarantee that a work package is already finished.
+
+### 13 October — Foundation and critical database behavior
+
+- Finalize repository scripts, shadcn/ui setup and passing CI.
+- Complete the initial page structure, metadata, simple landing page and dashboard shell.
+- Validate the Neon schema, existing migrations and exclusion-constraint migration.
+- Prepare and test authentication helpers and required route handlers.
+
+### 14 October — Functional application
+
+- Complete JWT authentication and server-side protection.
+- Implement and verify resource creation, listing, editing and lifecycle transitions.
+- Implement availability lookup and reservation creation.
+- Add all-reservations visibility and creator-only future modifications.
+- Test at least one fully working cross-user booking scenario.
+
+### 15 October — Validation and submission
+
+- Run focused security, conflict, concurrency and edge-case tests.
+- Verify behavior on mobile and desktop and perform a clean production build.
+- Finalize README, migration instructions and accessible ER diagram link.
+- Record a 3–5-minute walkthrough of implemented functionality.
+- Check GitHub, ER and video links in a separate browser session.
+- Submit all required links before 11:59 PM.
+
+### 17.1 Fallback when behind schedule
+
+Prioritize authentication, persistent resource creation, confirmed reservation creation, visible all-user bookings, owner-only mutation, and demonstrably correct overlap rejection. Preserve resource deletion/deactivation rules without replacing them with unsafe shortcuts. Skip optional filtering, dashboard statistics and decorative animation if necessary. Reserve enough time for a working demonstration and submission artifacts.
+
+## 18. Testing and acceptance plan
+
+Only executed tests may be reported as passed. For each test, record whether it is an automated unit/integration test or a manual browser check. Core data and authorization rules require server-side tests; visual behavior may be checked manually.
+
+### 18.1 Authentication and authorization
+
+- [ ] AUTH-T01 — Valid registration stores a user with a hashed password.
+- [ ] AUTH-T02 — Duplicate normalized email returns 409.
+- [ ] AUTH-T03 — Invalid or missing registration fields return 400.
+- [ ] AUTH-T04 — Correct login creates a session; incorrect login returns 401.
+- [ ] AUTH-T05 — Missing, expired or tampered JWT is rejected.
+- [ ] AUTH-T06 — Logout clears the browser session.
+- [ ] AUTH-T07 — Authenticated user visiting `/login` or `/signup` is redirected to `/dashboard`.
+- [ ] AUTH-T08 — Unauthenticated visitor to `/dashboard`, `/resources` or `/reservations` is redirected to `/login` before protected server data is loaded.
+- [ ] AUTH-T09 — Protected APIs reject unauthenticated direct requests with 401.
+- [ ] AUTH-T10 — Submitted `userId`, `createdById` or role fields cannot override authenticated identity or permissions.
+- [ ] AUTH-T11 — Two users can read the same reservations, but cannot edit each other's reservations.
+- [ ] AUTH-T12 — Password hashes and JWTs are absent from public API responses.
+- [ ] AUTH-T13 — Auth context refresh reflects login, refresh and logout correctly.
+
+### 18.2 Resource integrity
+
+- [ ] RES-T01 — Any authenticated user can create a valid resource.
+- [ ] RES-T02 — Invalid name, type, location and capacity are rejected.
+- [ ] RES-T03 — A different user can edit a resource while original creator attribution remains unchanged.
+- [ ] RES-T04 — A resource with no reservation history can be deleted.
+- [ ] RES-T05 — A resource with cancelled history cannot be hard-deleted.
+- [ ] RES-T06 — A resource with completed-only bookings may be deactivated.
+- [ ] RES-T07 — An ongoing or future confirmed reservation blocks deactivation.
+- [ ] RES-T08 — Inactive resources reject new reservations; reactivation restores eligibility.
+- [ ] RES-T09 — Delete/booking races do not result in dangling foreign keys.
+
+### 18.3 Reservation rules
+
+- [ ] BOOK-T01 — Valid future reservation persists with authenticated creator ID.
+- [ ] BOOK-T02 — Adjacent bookings of one resource are both permitted.
+- [ ] BOOK-T03 — Overlapping confirmed bookings on the same resource return 409.
+- [ ] BOOK-T04 — The same time on two different resources is permitted.
+- [ ] BOOK-T05 — Two concurrent same-resource overlapping inserts yield only one success.
+- [ ] BOOK-T06 — Invalid, past, missing or reversed intervals are rejected.
+- [ ] BOOK-T07 — Cancelled bookings no longer block a future matching interval.
+- [ ] BOOK-T08 — Creator can change a future confirmed booking.
+- [ ] BOOK-T09 — A rejected reschedule does not change the original booking.
+- [ ] BOOK-T10 — Another user cannot edit/cancel a booking (403) but can read it.
+- [ ] BOOK-T11 — Cancellation preserves the record and changes status.
+- [ ] BOOK-T12 — Ongoing, completed and cancelled bookings cannot be mutated.
+- [ ] BOOK-T13 — Availability responses agree with booking insert results.
+- [ ] BOOK-T14 — Booking/deactivation races preserve resource eligibility rules.
+- [ ] BOOK-T15 — Derived lifecycle labels are correct at exact start/end boundaries.
+
+### 18.4 Interface, structure and CI
+
+- [ ] UI-T01 — All `page.tsx` files are Server Components and export appropriate metadata.
+- [ ] UI-T02 — Root layout supplies `AuthProvider` but no global header or footer.
+- [ ] UI-T03 — Landing page shows only its public header/footer; login and signup show neither.
+- [ ] UI-T04 — Dashboard, resource and reservation pages show the shared app header.
+- [ ] UI-T05 — Feature-only components are under one `components/` directory per major route, with no nested duplicates.
+- [ ] UI-T06 — Landing page is simple and uses real navigation, without fabricated statistics.
+- [ ] UI-T07 — Browser navigation after successful login reaches `/dashboard`.
+- [ ] UI-T08 — Interactive elements are keyboard accessible and usable on mobile.
+- [ ] UI-T09 — No server-side database or token module is imported into client-only UI.
+- [ ] CI-T01 — Feature/fix/main pushes and main-targeted PRs trigger GitHub Actions as configured.
+- [ ] CI-T02 — `npm ci`, Prisma generation, Prettier check, ESLint and build pass.
+- [ ] CI-T03 — Failed formatting, lint or build steps correctly report workflow failure.
+- [ ] CI-T04 — Build checks do not apply database migrations or modify production records.
+
+### 18.5 End-to-end manual acceptance
+
+1. Register Alice, log in, and verify automatic navigation to the dashboard.
+2. Create Room A and a confirmed future booking.
+3. Open a separate browser/private session, register Bob and log in.
+4. Verify Bob can see Alice's booking but cannot modify or cancel it.
+5. Attempt a booking that overlaps Room A and verify a conflict response.
+6. Verify adjacent intervals are permitted and bookings on another resource are unaffected.
+7. Return to Alice and edit or cancel her eligible booking.
+8. Attempt to delete a never-reserved resource, then a resource with history; verify different outcomes.
+9. Verify ongoing/future confirmed bookings prevent resource deactivation.
+10. Check session expiry/logout, responsive behavior, build and available demonstration links.
+
+## 19. Demo data and demonstration script
+
+Use fictional names and resource details. Demo records must be created through the actual registration and resource APIs or through a valid seed script with a known user foreign key. Do not display mock counts or claims about live usage. Generate reservations for dates safely in the future during the demonstration.
+
+Suggested demonstration sequence:
+
+1. Show the public landing page and registration/login process.
+2. Show dashboard links to resources and reservations.
+3. Create Room A, explain creator attribution, and reserve it.
+4. Show the reservation in the organization-wide list.
+5. Attempt a duplicate interval in another account and demonstrate HTTP 409.
+6. Show that a second user may view but cannot edit or cancel Alice's booking.
+7. Return to the owner to reschedule/cancel and show that cancellation releases the interval.
+8. Demonstrate never-reserved resource deletion and historical resource protection.
+9. Briefly display the ER diagram and explain JWT cookies, server ownership checks and PostgreSQL exclusion constraint.
+
+Keep the video within the required **3–5 minutes** and describe only features that work in the delivered build.
+
+## 20. Documentation and final submission
+
+### 20.1 README requirements
+
+The README must provide:
+
+1. Application purpose and implemented feature summary.
+2. Current framework, Node.js and database requirements.
+3. Environment variables and `.env.example` setup, without committed credentials.
+4. Commands for `npm ci`, Prisma Client generation, reviewed migration deployment and local development.
+5. Formatting, lint, build and available test commands.
+6. Explanation of the User, Resource and Reservation models.
+7. Reservation overlap and cancellation semantics.
+8. Authentication and reservation ownership rules.
+9. Design limitations and intentionally excluded features.
+10. Links to the ER diagram and demonstration video.
+
+The implementation instructions should allow a reviewer to run the app from a clean clone. State any external database requirements and provide steps appropriate to the configured Neon environment.
+
+### 20.2 Repository artifacts
+
+- `docs/ReserveHub_Implementation_Plan.md` — requirements, architecture and implementation plan.
+- `docs/ReserveHub_ER_Diagram.drawio` — editable entity-relationship diagram.
+- `docs/NeonDB_Setup_Guide.md` — Neon configuration and connection setup.
+- `docs/Prisma_Migrations_Guide.md` — migration creation, review and deployment.
+- `README.md`, `.env.example`, Prisma schema and committed migration history.
+- Source code and passing CI workflow under `.github/workflows/ci.yml`.
+
+Provide the ER diagram through a shareable repository or other publicly accessible URL; the existence of a local drawing file alone does not satisfy the sharing requirement. A rendered SVG/PNG may be provided as a convenience, without replacing the editable source.
+
+### 20.3 Submission checklist
+
+- [ ] GitHub repository is accessible to evaluators.
+- [ ] Core functionality is demonstrated and verified.
+- [ ] README provides reproducible setup commands.
+- [ ] Shareable ER diagram link is tested.
+- [ ] Demonstration video is accessible and between 3 and 5 minutes.
+- [ ] Links are tested from a browser without the owner's active account session.
+- [ ] Submission form is completed before the deadline.
+- [ ] The submitted email matches the original job application email.
+
+Submission form: <https://forms.gle/HzQH6tB5c4edPjnn8>.
+
+## 21. Architectural decisions
+
+| ID     | Decision                                             | Rationale / constraint                                                                 |
+| ------ | ---------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| ADR-01 | Next.js full-stack application                       | Meets assessment stack requirements with one deployable codebase                       |
+| ADR-02 | JWT in HttpOnly cookie                               | Supports server-verified session handling without exposing tokens to browser scripts   |
+| ADR-03 | One registered-user type; no RBAC                    | Limits complexity while retaining meaningful ownership authorization                   |
+| ADR-04 | Reservation creator-only future mutation             | Preserves user control over bookings without restricting organization-wide visibility  |
+| ADR-05 | Resource creator attribution, not ownership          | Allows collaborative resource maintenance                                              |
+| ADR-06 | Hard-delete only never-reserved resources            | Removes accidental entries without destroying history                                  |
+| ADR-07 | Resource deactivation subject to live booking checks | Preserves active/future reservations                                                   |
+| ADR-08 | Reservation cancellation instead of deletion         | Retains booking history and releases cancelled intervals                               |
+| ADR-09 | PostgreSQL GiST exclusion constraint                 | Prevents overlapping confirmed bookings under concurrency                              |
+| ADR-10 | Two stored reservation statuses                      | Derives time-dependent states without scheduled jobs                                   |
+| ADR-11 | Next.js Server Component pages with metadata         | Keeps page rendering and SEO metadata server-side while isolating browser interactions |
+| ADR-12 | Root AuthProvider and selective ProtectedRoute       | Supports simple client navigation without replacing server authorization               |
+| ADR-13 | Explicit page-level header/footer imports            | Login/signup remain uncluttered without route groups or additional layouts             |
+| ADR-14 | One components directory per major feature           | Keeps feature implementation cohesive and reduces folder fragmentation                 |
+| ADR-15 | Shared components only for cross-feature reuse       | Avoids placing page-specific elements in a global component collection                 |
+| ADR-16 | shadcn/ui + Lucide + restrained Motion               | Provides consistent, accessible UI without unnecessary visual complexity               |
+| ADR-17 | Reviewed Prisma SQL migrations                       | Makes database changes traceable and supports custom overlap constraints               |
+| ADR-18 | GitHub Actions with formatting, lint and build       | Detects integration errors before merging without applying migrations                  |
+
+### 21.1 Authorization explanation
+
+ReserveHub permits any authenticated employee to manage resource records and view organization-wide bookings. Reservation mutations are restricted to the original creator while the confirmed booking has not yet started. The API and database enforce those rules independently of interface visibility. Administrative role management is excluded from the MVP.
+
+### 21.2 Resource lifecycle explanation
+
+Never-reserved resources may be removed permanently. Once any booking has referenced a resource, its history is retained and deletion is prohibited. Deactivation is then available only if no confirmed reservation remains ongoing or scheduled for the future.
+
+## 22. Risk register
+
+| Risk                                    | Potential effect                              | Mitigation                                                                           |
+| --------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Neon connectivity or migration mismatch | Feature development blocked                   | Validate setup early; use direct migration URL, reviewed SQL and status checks       |
+| Overlap race                            | Double-booked resource                        | PostgreSQL exclusion constraint and concurrent tests                                 |
+| Booking/deactivation race               | Inactive resource with newly accepted booking | Consistent resource row locking and transaction tests                                |
+| Ownership bypass                        | User edits another user's booking             | Server-side JWT and immutable owner checks with 403 tests                            |
+| Client-only route protection            | Private data exposed before redirect          | Authenticate in Server Components and Route Handlers before data access              |
+| Unmanaged component reuse               | Bloated shared component directory            | One route-local components folder per feature; global components only for true reuse |
+| Misleading dashboard data               | Incorrect demo and unreliable UI              | Use navigation-first dashboard; compute any metrics from actual data                 |
+| Timezone mismatch                       | Incorrect interval comparison                 | Store instants as timestamptz; present Asia/Colombo consistently                     |
+| Incomplete core flow                    | Unconvincing assessment demonstration         | Finish P0 end-to-end journeys before optional styling                                |
+| Missing delivery artifacts              | Invalid or incomplete submission              | Reserve the final delivery window for README, ER diagram, video and tested links     |
+
+## 23. Definition of done
+
+The application is ready for submission when all applicable P0 criteria are satisfied:
+
+- [ ] Registration, login, logout and authenticated session restoration work.
+- [ ] Login redirects to `/dashboard`; unauthenticated management requests are rejected server-side.
+- [ ] Landing, authentication and management pages use the required distinct header/footer placement.
+- [ ] Every `page.tsx` remains a Server Component and provides route metadata.
+- [ ] Shared UI is genuinely reusable; each major feature has at most one page-specific components directory.
+- [ ] AuthProvider is attached to the root layout and ProtectedRoute is used only for protected pages.
+- [ ] Authenticated users can create, view and edit resources, with creator attribution preserved.
+- [ ] A never-reserved resource can be deleted, but any reservation history prevents hard deletion.
+- [ ] Current or future confirmed bookings prevent deactivation.
+- [ ] An active resource can be booked in a valid free future interval.
+- [ ] Overlapping confirmed reservations are rejected by PostgreSQL, including concurrent submissions.
+- [ ] Authenticated users can view all reservations and identify their creators.
+- [ ] Only the creator can edit/reschedule or cancel their future confirmed reservation.
+- [ ] Ongoing, completed and cancelled bookings remain read-only.
+- [ ] Cancellation preserves the record and makes the interval available again.
+- [ ] The three-entity Prisma model matches the ER diagram and committed migrations.
+- [ ] CI formatting, lint and production build checks pass.
+- [ ] The repository runs locally using the documented setup process.
+- [ ] README, shareable ER link and 3–5-minute video are available to reviewers.
+- [ ] The final submission is completed before the assessment deadline.
+
+## Appendix A — Development commands
+
+All commands below use syntax compatible with Windows PowerShell in the repository root.
+
+```powershell
+# Install locked dependencies
+npm ci
+
+# Generate Prisma Client
+npm run prisma:generate
+
+# Start the application
+npm run dev
+
+# Format and validate
+npm run format
+npm run format:check
+npm run lint
+npm run build
+
+# Validate schema and inspect migrations
+npm run prisma:validate
+npm run prisma:migrate:status
+```
+
+For a new migration, follow the reviewed SQL workflow in Section 8.5 and `docs/Prisma_Migrations_Guide.md`. Do not deploy migrations simply to resolve an unrelated frontend build error.
+
+## Appendix B — Sources and traceability
+
+- PrimeWave Lab (Pvt) Ltd, _Software Engineering Internship — Technical Assessment_ (source assessment document).
+- ReserveHub repository: <https://github.com/ishara-dhanushan/Reserve-Hub>.
+- Database setup: `docs/NeonDB_Setup_Guide.md`.
+- Schema changes: `docs/Prisma_Migrations_Guide.md`.
+- ER diagram: `docs/ReserveHub_ER_Diagram.drawio`.
+- GitHub Actions workflow: `.github/workflows/ci.yml`.
+
+**Project scope:** JWT-authenticated collaborative resource management; organization-wide reservation visibility; creator-only edits and cancellation of future confirmed reservations; and database-enforced avoidance of overlapping bookings. Administrative roles and advanced scheduling features are outside the MVP.
