@@ -82,7 +82,8 @@ async function main(): Promise<void> {
     console.log("PASS: Overlap rejected");
 
     // Test 2: Adjacent bookings must be accepted.
-    await book(db, roomA.id, 60, 120);
+    // Retain the booking ID for the invalid-update test.
+    const adjacentBooking = await book(db, roomA.id, 60, 120);
     console.log("PASS: Adjacent booking accepted");
 
     // Test 3: Cancelled reservations do not block availability.
@@ -115,7 +116,23 @@ async function main(): Promise<void> {
     // Test 6: Zero-length and reversed intervals must be rejected.
     await assert.rejects(book(db, roomA.id, 480, 480));
     await assert.rejects(book(db, roomA.id, 490, 480));
-    console.log("PASS: Invalid intervals rejected");
+
+    // The CHECK constraint must also prevent invalid updates.
+    await assert.rejects(
+      db.reservation.update({
+        where: { id: adjacentBooking.id },
+        data: { endAt: at(60) },
+      }),
+    );
+
+    // A rejected update must preserve the existing reservation.
+    const unchangedBooking = await db.reservation.findUnique({
+      where: { id: adjacentBooking.id },
+    });
+
+    assert.equal(unchangedBooking?.endAt.getTime(), at(120).getTime());
+
+    console.log("PASS: Invalid inserts and updates rejected");
 
     console.log("All booking integrity tests passed.");
   } finally {

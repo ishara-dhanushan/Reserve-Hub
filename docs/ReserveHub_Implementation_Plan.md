@@ -449,14 +449,14 @@ Never commit actual connection strings or JWT secrets. Consult `docs/NeonDB_Setu
 
 All persistent schema changes must be represented by committed, reviewed Prisma migration SQL. Database schema synchronization is not achieved by editing `schema.prisma` alone.
 
-```powershell
+```bash
 npm run prisma:validate
-npm run prisma:migrate:dev -- --name descriptive_change --create-only
+npm run prisma:migrate:dev -- --name descriptive_change
 ```
 
 Inspect the new `prisma/migrations/<timestamp>_descriptive_change/migration.sql`, including any manually added exclusion and check constraints. After review:
 
-```powershell
+```bash
 npm run prisma:migrate:deploy
 npm run prisma:generate
 npm run prisma:migrate:status
@@ -843,9 +843,10 @@ Formatting, lint and build failures fail the job. The workflow must not run migr
     "prisma:validate": "prisma validate",
     "prisma:format": "prisma format",
     "prisma:generate": "prisma generate",
-    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:dev": "prisma migrate dev --create-only",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:migrate:status": "prisma migrate status"
+    "prisma:migrate:status": "prisma migrate status",
+    "test:booking-integrity": "tsx scripts/verify-booking-integrity.ts"
   }
 }
 ```
@@ -854,7 +855,7 @@ The existing `.prettierignore` excludes `package.json` and `package-lock.json`; 
 
 ### 15.3 Local verification
 
-```powershell
+```bash
 npm ci
 npm run prisma:generate
 npm run format:check
@@ -1178,9 +1179,9 @@ The application is ready for submission when all applicable P0 criteria are sati
 
 ## Appendix A — Development commands
 
-All commands below use syntax compatible with Windows PowerShell in the repository root.
+All commands below use syntax compatible with Windows PowerShell and Linux Bash in the repository root.
 
-```powershell
+```bash
 # Install locked dependencies
 npm ci
 
