@@ -23,7 +23,7 @@ export default function HomePage() {
     <div className="flex min-h-screen flex-col">
       <Header />
 
-      <main className="flex-1">
+      <main className="flex-1 bg-linear-to-br from-primary/10 via-background to-accent/20">
         <section className="mx-auto flex max-w-6xl flex-col items-center px-4 py-20 text-center sm:px-6 sm:py-28">
           <div className="mb-6 rounded-full border bg-secondary px-4 py-1.5 text-xs font-medium text-secondary-foreground">
             Shared Resource Management
@@ -59,7 +59,7 @@ export default function HomePage() {
           <Card>
             <CardHeader>
               <Package
-                className="mb-3 size-7 text-primary"
+                className="mb-3 size-9 rounded-lg bg-primary/10 p-2 text-primary"
                 aria-hidden="true"
               />
               <CardTitle>Manage resources</CardTitle>
@@ -73,7 +73,7 @@ export default function HomePage() {
           <Card>
             <CardHeader>
               <CalendarCheck
-                className="mb-3 size-7 text-primary"
+                className="mb-3 size-9 rounded-lg bg-accent p-2 text-accent-foreground"
                 aria-hidden="true"
               />
               <CardTitle>Manage reservations</CardTitle>
