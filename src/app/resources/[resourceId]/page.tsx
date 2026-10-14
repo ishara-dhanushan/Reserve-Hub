@@ -27,14 +27,15 @@ async function AuthenticatedResourceDetails({
   const { resourceId } = await params;
   const { updated, deactivated, reactivated } = await searchParams;
 
-  const initialNotice =
-    updated === "1"
-      ? "updated"
-      : deactivated === "1"
-        ? "deactivated"
-        : reactivated === "1"
-          ? "reactivated"
-          : null;
+  let initialNotice: "updated" | "deactivated" | "reactivated" | null = null;
+
+  if (updated === "1") {
+    initialNotice = "updated";
+  } else if (deactivated === "1") {
+    initialNotice = "deactivated";
+  } else if (reactivated === "1") {
+    initialNotice = "reactivated";
+  }
 
   return (
     <ProtectedRoute>

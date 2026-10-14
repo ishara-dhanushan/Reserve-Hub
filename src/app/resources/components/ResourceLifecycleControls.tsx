@@ -144,6 +144,26 @@ export function ResourceLifecycleControls({
     }
   }
 
+  const confirmationContent = {
+    delete: {
+      title: "Delete Resource Permanently?",
+      description: `This will permanently delete "${resource.name}". This action cannot be undone. Deletion is only allowed when there is no reservation history.`,
+      confirmLabel: "Delete Permanently",
+    },
+    deactivate: {
+      title: "Deactivate Resource?",
+      description: `Deactivate "${resource.name}"? It will remain visible, but new bookings will not be permitted. Existing reservations will be preserved. Ongoing or future confirmed bookings block deactivation.`,
+      confirmLabel: "Confirm Deactivation",
+    },
+    reactivate: {
+      title: "Reactivate Resource?",
+      description: `Reactivate "${resource.name}"? It will become available for eligible new bookings again.`,
+      confirmLabel: "Confirm Reactivation",
+    },
+  };
+
+  const confirmation = action ? confirmationContent[action] : null;
+
   return (
     <div className="flex w-full flex-col items-end gap-3 sm:w-auto">
       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -227,21 +247,9 @@ export function ResourceLifecycleControls({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {action === "delete"
-                ? "Delete Resource Permanently?"
-                : action === "deactivate"
-                  ? "Deactivate Resource?"
-                  : "Reactivate Resource?"}
-            </DialogTitle>
+            <DialogTitle>{confirmation?.title}</DialogTitle>
 
-            <DialogDescription>
-              {action === "delete"
-                ? `This will permanently delete "${resource.name}". This action cannot be undone. Deletion is only allowed when there is no reservation history.`
-                : action === "deactivate"
-                  ? `Deactivate "${resource.name}"? It will remain visible, but new bookings will not be permitted. Existing reservations will be preserved. Ongoing or future confirmed bookings block deactivation.`
-                  : `Reactivate "${resource.name}"? It will become available for eligible new bookings again.`}
-            </DialogDescription>
+            <DialogDescription>{confirmation?.description}</DialogDescription>
           </DialogHeader>
 
           <DialogFooter>
@@ -267,13 +275,7 @@ export function ResourceLifecycleControls({
                 />
               )}
 
-              {busy
-                ? "Processing..."
-                : action === "delete"
-                  ? "Delete Permanently"
-                  : action === "deactivate"
-                    ? "Confirm Deactivation"
-                    : "Confirm Reactivation"}
+              {busy ? "Processing..." : confirmation?.confirmLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

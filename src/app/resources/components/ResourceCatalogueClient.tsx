@@ -17,9 +17,15 @@ import {
 } from "@/components/ui/card";
 import type { ResourceDTO, ResourceListResponse } from "@/lib/types/resources";
 
-type Props = { created: boolean; deleted: boolean };
+interface ResourceCatalogueClientProps {
+  created: boolean;
+  deleted: boolean;
+}
 
-export function ResourceCatalogueClient({ created, deleted }: Props) {
+export function ResourceCatalogueClient({
+  created,
+  deleted,
+}: ResourceCatalogueClientProps) {
   const router = useRouter();
   const [resources, setResources] = useState<ResourceDTO[] | null>(null);
   const [error, setError] = useState("");
@@ -38,7 +44,9 @@ export function ResourceCatalogueClient({ created, deleted }: Props) {
           signal: controller.signal,
         });
 
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          return;
+        }
 
         if (response.status === 401) {
           router.replace("/login");
@@ -69,6 +77,12 @@ export function ResourceCatalogueClient({ created, deleted }: Props) {
 
     return () => controller.abort();
   }, [router, reloadCount]);
+
+  function retryLoad() {
+    setError("");
+    setResources(null);
+    setReloadCount((count) => count + 1);
+  }
 
   const activeCount =
     resources?.filter((resource) => resource.isActive).length ?? 0;
@@ -109,15 +123,7 @@ export function ResourceCatalogueClient({ created, deleted }: Props) {
                 {error}
               </p>
 
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setError("");
-                  setResources(null);
-                  setReloadCount((n) => n + 1);
-                }}
-              >
+              <Button type="button" variant="outline" onClick={retryLoad}>
                 <RefreshCw className="size-4" aria-hidden="true" />
                 Try Again
               </Button>
@@ -125,93 +131,91 @@ export function ResourceCatalogueClient({ created, deleted }: Props) {
           </Card>
         )}
 
-        {!resources && !error ? (
+        {!resources && !error && (
           <p role="status" className="py-12 text-center text-muted-foreground">
             Loading resources...
           </p>
-        ) : (
-          resources && (
-            <>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Card>
-                  <CardHeader>
-                    <CardDescription>Total Resources</CardDescription>
+        )}
 
-                    <CardTitle className="flex items-center gap-3 text-2xl text-primary">
-                      <Package className="size-6" aria-hidden="true" />
-                      {resources.length}
-                    </CardTitle>
-                  </CardHeader>
-                </Card>
+        {resources && (
+          <>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardDescription>Total Resources</CardDescription>
 
-                <Card>
-                  <CardHeader>
-                    <CardDescription>Active Resources</CardDescription>
+                  <CardTitle className="flex items-center gap-3 text-2xl text-primary">
+                    <Package className="size-6" aria-hidden="true" />
+                    {resources.length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
 
-                    <CardTitle className="flex items-center gap-3 text-2xl text-success">
-                      <CheckCircle2 className="size-6" aria-hidden="true" />
-                      {activeCount}
-                    </CardTitle>
-                  </CardHeader>
-                </Card>
+              <Card>
+                <CardHeader>
+                  <CardDescription>Active Resources</CardDescription>
 
-                <Card>
-                  <CardHeader>
-                    <CardDescription>Inactive Resources</CardDescription>
+                  <CardTitle className="flex items-center gap-3 text-2xl text-success">
+                    <CheckCircle2 className="size-6" aria-hidden="true" />
+                    {activeCount}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
 
-                    <CardTitle className="flex items-center gap-3 text-2xl text-warning">
-                      <PowerOff className="size-6" aria-hidden="true" />
-                      {inactiveCount}
-                    </CardTitle>
-                  </CardHeader>
-                </Card>
-              </div>
+              <Card>
+                <CardHeader>
+                  <CardDescription>Inactive Resources</CardDescription>
 
-              {resources.length === 0 ? (
-                <Card>
-                  <CardContent className="flex flex-col items-center gap-4 py-14 text-center">
-                    <div className="flex size-16 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-                      <Package className="size-8" aria-hidden="true" />
-                    </div>
+                  <CardTitle className="flex items-center gap-3 text-2xl text-warning">
+                    <PowerOff className="size-6" aria-hidden="true" />
+                    {inactiveCount}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
 
-                    <div className="space-y-2">
-                      <h2 className="text-xl font-semibold">
-                        No resources yet
-                      </h2>
+            {resources.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-4 py-14 text-center">
+                  <div className="flex size-16 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+                    <Package className="size-8" aria-hidden="true" />
+                  </div>
 
-                      <p className="max-w-md text-sm text-muted-foreground">
-                        Create your first meeting room or equipment resource to
-                        make it visible to everyone.
-                      </p>
-                    </div>
+                  <div className="space-y-2">
+                    <h2 className="text-xl font-semibold">No resources yet</h2>
 
-                    <Button asChild>
-                      <Link href="/resources/new">
-                        <Plus className="size-4" aria-hidden="true" />
-                        Create Resource
-                      </Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : (
-                <section className="space-y-4">
-                  <div>
-                    <h2 className="text-xl font-semibold">All Resources</h2>
-
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Active and inactive resources are both listed.
+                    <p className="max-w-md text-sm text-muted-foreground">
+                      Create your first meeting room or equipment resource to
+                      make it visible to everyone.
                     </p>
                   </div>
 
-                  <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                    {resources.map((resource) => (
-                      <ResourceCard key={resource.id} resource={resource} />
-                    ))}
-                  </div>
-                </section>
-              )}
-            </>
-          )
+                  <Button asChild>
+                    <Link href="/resources/new">
+                      <Plus className="size-4" aria-hidden="true" />
+                      Create Resource
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <section className="space-y-4">
+                <div>
+                  <h2 className="text-xl font-semibold">All Resources</h2>
+
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Active and inactive resources are both listed.
+                  </p>
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {resources.map((resource) => (
+                    <ResourceCard key={resource.id} resource={resource} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
         )}
       </main>
     </div>

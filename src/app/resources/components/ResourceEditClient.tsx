@@ -17,7 +17,11 @@ import {
 } from "@/components/ui/card";
 import type { ResourceDetailResponse } from "@/lib/types/resources";
 
-export function ResourceEditClient({ resourceId }: { resourceId: string }) {
+interface ResourceEditClientProps {
+  resourceId: string;
+}
+
+export function ResourceEditClient({ resourceId }: ResourceEditClientProps) {
   const router = useRouter();
   const [data, setData] = useState<ResourceDetailResponse | null>(null);
   const [missing, setMissing] = useState(false);
@@ -40,7 +44,9 @@ export function ResourceEditClient({ resourceId }: { resourceId: string }) {
           },
         );
 
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          return;
+        }
 
         if (response.status === 401) {
           router.replace("/login");

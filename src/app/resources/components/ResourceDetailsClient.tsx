@@ -60,7 +60,9 @@ export function ResourceDetailsClient({
           },
         );
 
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          return;
+        }
 
         if (response.status === 401) {
           router.replace("/login");
@@ -108,6 +110,26 @@ export function ResourceDetailsClient({
     setReloadCount((count) => count + 1);
   }
 
+  function handleStatusChange(action: "deactivate" | "reactivate") {
+    setNotice(action === "deactivate" ? "deactivated" : "reactivated");
+
+    setData((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        resource: {
+          ...current.resource,
+          isActive: action === "reactivate",
+        },
+      };
+    });
+
+    setReloadCount((count) => count + 1);
+  }
+
   if (missing) {
     return <ResourceNotFound />;
   }
@@ -147,7 +169,9 @@ export function ResourceDetailsClient({
   }
 
   // A failed re-fetch can display the previous data along with its error.
-  if (!data) return null;
+  if (!data) {
+    return null;
+  }
 
   const resource = data.resource;
   const isMeetingRoom = resource.type === "MEETING_ROOM";
@@ -172,23 +196,7 @@ export function ResourceDetailsClient({
               isActive: resource.isActive,
             }}
             hasReservationHistory={data.hasReservationHistory}
-            onStatusChange={(action) => {
-              setNotice(
-                action === "deactivate" ? "deactivated" : "reactivated",
-              );
-              setData((current) =>
-                current
-                  ? {
-                      ...current,
-                      resource: {
-                        ...current.resource,
-                        isActive: action === "reactivate",
-                      },
-                    }
-                  : current,
-              );
-              setReloadCount((count) => count + 1);
-            }}
+            onStatusChange={handleStatusChange}
           />
         </div>
 

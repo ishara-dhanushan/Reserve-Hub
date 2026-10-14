@@ -11,10 +11,14 @@ export type ResourceDTO = {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
-  createdBy: { name: string };
+  createdBy: {
+    name: string;
+  };
 };
 
-export type ResourceListResponse = { resources: ResourceDTO[] };
+export type ResourceListResponse = {
+  resources: ResourceDTO[];
+};
 
 export type ResourceDetailResponse = {
   resource: ResourceDTO;
