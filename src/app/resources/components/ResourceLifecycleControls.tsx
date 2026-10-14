@@ -22,20 +22,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { ResourceWithCreator } from "@/lib/services/resources";
+import type { ResourceDTO } from "@/lib/types/resources";
 
 type LifecycleAction = "deactivate" | "reactivate" | "delete";
 
-type LifecycleResource = Pick<ResourceWithCreator, "id" | "name" | "isActive">;
+type LifecycleResource = Pick<ResourceDTO, "id" | "name" | "isActive">;
 
 interface ResourceLifecycleControlsProps {
   resource: LifecycleResource;
   hasReservationHistory: boolean;
+  onStatusChange: (action: "deactivate" | "reactivate") => void;
 }
 
 export function ResourceLifecycleControls({
   resource,
   hasReservationHistory,
+  onStatusChange,
 }: ResourceLifecycleControlsProps) {
   const router = useRouter();
 
@@ -130,11 +132,7 @@ export function ResourceLifecycleControls({
         return;
       }
 
-      const successFlag =
-        selectedAction === "deactivate" ? "deactivated" : "reactivated";
-
-      router.replace(`/resources/${resource.id}?${successFlag}=1`);
-      router.refresh();
+      onStatusChange(selectedAction);
     } catch {
       setAction(null);
       setFeedback({

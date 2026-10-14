@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { hasValidOrigin } from "@/lib/auth/origin";
 import {
   getResourceById,
+  hasResourceReservationHistory,
   updateResource,
   deleteResource,
   DuplicateResourceError,
@@ -48,7 +49,14 @@ export async function GET(
       return errorResponse("Resource not found.", 404);
     }
 
-    return NextResponse.json({ resource }, { headers: noStoreHeaders });
+    const hasReservationHistory = await hasResourceReservationHistory(
+      resource.id,
+    );
+
+    return NextResponse.json(
+      { resource, hasReservationHistory },
+      { headers: noStoreHeaders },
+    );
   } catch (error: unknown) {
     console.error("Failed to retrieve resource:", error);
     return errorResponse("Unable to retrieve resource.", 500);

@@ -17,9 +17,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { ResourceWithCreator } from "@/lib/services/resources";
+import type { ResourceDTO } from "@/lib/types/resources";
 
-export function ResourceCard({ resource }: { resource: ResourceWithCreator }) {
+export function ResourceCard({ resource }: { resource: ResourceDTO }) {
   const isMeetingRoom = resource.type === "MEETING_ROOM";
 
   return (

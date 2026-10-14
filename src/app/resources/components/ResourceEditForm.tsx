@@ -16,11 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ResourceWithCreator } from "@/lib/services/resources";
+import type { ResourceDTO } from "@/lib/types/resources";
 import { updateResourceSchema } from "@/lib/validators/resources";
 
 type EditableResource = Pick<
-  ResourceWithCreator,
+  ResourceDTO,
   "id" | "name" | "type" | "location" | "capacity" | "description"
 >;
 
