@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlertCircle,
   ArrowLeft,
   CalendarDays,
   DoorOpen,
@@ -12,10 +13,15 @@ import {
   RefreshCw,
   UserRound,
   UsersRound,
+  X,
 } from "lucide-react";
 import { ResourceNotFound } from "@/app/resources/components/ResourceNotFound";
-import { ResourceLifecycleControls } from "@/app/resources/components/ResourceLifecycleControls";
+import {
+  ResourceLifecycleControls,
+  type ResourceLifecycleFeedback,
+} from "@/app/resources/components/ResourceLifecycleControls";
 import { ResourceSuccessBanner } from "@/app/resources/components/ResourceSuccessBanner";
+import { ResourceFeedbackBanner } from "@/app/resources/components/ResourceFeedbackBanner";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +49,23 @@ export function ResourceDetailsClient({
   const [error, setError] = useState("");
   const [reloadCount, setReloadCount] = useState(0);
   const [notice, setNotice] = useState<StatusNotice | null>(initialNotice);
+
+  const [lifecycleFeedback, setLifecycleFeedback] =
+    useState<ResourceLifecycleFeedback | null>(null);
+
+  // Automatically dismiss resource conflict messages after seven seconds.
+  // Other errors remain visible until dismissed or another action begins.
+  useEffect(() => {
+    if (!lifecycleFeedback?.conflict) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setLifecycleFeedback(null);
+    }, 7000);
+
+    return () => window.clearTimeout(timeout);
+  }, [lifecycleFeedback]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -111,6 +134,7 @@ export function ResourceDetailsClient({
   }
 
   function handleStatusChange(action: "deactivate" | "reactivate") {
+    setLifecycleFeedback(null);
     setNotice(action === "deactivate" ? "deactivated" : "reactivated");
 
     setData((current) => {
@@ -197,22 +221,30 @@ export function ResourceDetailsClient({
             }}
             hasReservationHistory={data.hasReservationHistory}
             onStatusChange={handleStatusChange}
+            onFeedbackChange={setLifecycleFeedback}
           />
         </div>
+
+        {lifecycleFeedback && (
+          <ResourceFeedbackBanner
+            variant="error"
+            title={
+              lifecycleFeedback.conflict ? "Resource Conflict" : "Action Failed"
+            }
+            message={lifecycleFeedback.message}
+            onDismiss={() => setLifecycleFeedback(null)}
+          />
+        )}
 
         {notice && <ResourceSuccessBanner key={notice} kind={notice} />}
 
         {error && (
-          <div
-            role="alert"
-            className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
-          >
-            {error}
-
-            <Button variant="ghost" size="sm" onClick={retry}>
-              Try Again
-            </Button>
-          </div>
+          <ResourceFeedbackBanner
+            variant="error"
+            title="Unable to Load Resource"
+            message={error}
+            onRetry={retry}
+          />
         )}
 
         <Card>
