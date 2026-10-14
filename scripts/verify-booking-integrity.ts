@@ -150,7 +150,13 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error("Booking integrity tests failed:", error);
-  process.exitCode = 1;
-});
+async function run(): Promise<void> {
+  try {
+    await main();
+  } catch (error: unknown) {
+    console.error("Booking integrity tests failed:", error);
+    process.exitCode = 1;
+  }
+}
+
+void run();

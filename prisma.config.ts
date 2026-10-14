@@ -9,6 +9,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DIRECT_URL"],
+    // Prefer the primary (production) database for migration commands.
+    // Fall back to the isolated testing database when DIRECT_URL is unset.
+    url: process.env.DIRECT_URL || process.env.TEST_DIRECT_URL,
   },
 });
