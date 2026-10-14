@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-
 import { LoginForm } from "@/app/login/components/LoginForm";
 import { Button } from "@/components/ui/button";
 import {

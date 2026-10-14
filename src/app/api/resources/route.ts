@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasValidOrigin } from "@/lib/auth/origin";
 import { listResources, createResource } from "@/lib/services/resources";

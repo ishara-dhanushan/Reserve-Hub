@@ -2,7 +2,10 @@ import "server-only";
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import type { CreateResourceInput } from "@/lib/validators/resources";
+import type {
+  CreateResourceInput,
+  UpdateResourceInput,
+} from "@/lib/validators/resources";
 
 // Select only the resource fields required by the application.
 const resourceSelect = {
@@ -70,4 +73,126 @@ export async function createResource(
     data,
     select: resourceSelect,
   });
+}
+
+// Edit resource fields without changing its original creator.
+export async function updateResource(
+  resourceId: string,
+  input: UpdateResourceInput,
+) {
+  const data = {
+    ...(input.name !== undefined && { name: input.name }),
+    ...(input.type !== undefined && { type: input.type }),
+    ...(input.location !== undefined && {
+      location: input.location,
+    }),
+    ...(input.capacity !== undefined && {
+      capacity: input.capacity,
+    }),
+    ...(input.description !== undefined && {
+      description: input.description,
+    }),
+    ...(input.isActive !== undefined && {
+      isActive: input.isActive,
+    }),
+  } satisfies Prisma.ResourceUpdateInput;
+
+  return prisma.$transaction(async (tx) => {
+    // Lock the resource while evaluating lifecycle restrictions.
+    const locked = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>`
+      SELECT "id", "isActive"
+      FROM "Resource"
+      WHERE "id" = ${resourceId}::uuid
+      FOR UPDATE
+    `;
+
+    if (locked.length === 0) {
+      return { status: "not-found" } as const;
+    }
+
+    // Deactivation is blocked by ongoing or future confirmed bookings.
+    if (input.isActive === false && locked[0].isActive) {
+      const blockingReservation = await tx.reservation.findFirst({
+        where: {
+          resourceId,
+          status: "CONFIRMED",
+          endAt: { gt: new Date() },
+        },
+        select: { id: true },
+      });
+
+      if (blockingReservation) {
+        return { status: "blocked" } as const;
+      }
+    }
+
+    const resource = await tx.resource.update({
+      where: { id: resourceId },
+      data,
+      select: resourceSelect,
+    });
+
+    return { status: "updated", resource } as const;
+  });
+}
+
+// Identify referential-integrity failures without exposing database errors.
+function isForeignKeyViolation(error: unknown): boolean {
+  let current: unknown = error;
+
+  for (let depth = 0; depth < 5; depth++) {
+    if (typeof current !== "object" || current === null) {
+      return false;
+    }
+
+    if (
+      "code" in current &&
+      (current.code === "P2003" || current.code === "23503")
+    ) {
+      return true;
+    }
+
+    current = "cause" in current ? current.cause : null;
+  }
+
+  return false;
+}
+
+// Permanently delete only resources with no reservation history.
+export async function deleteResource(resourceId: string) {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "Resource"
+        WHERE "id" = ${resourceId}::uuid
+        FOR UPDATE
+      `;
+
+      if (locked.length === 0) {
+        return "not-found" as const;
+      }
+
+      const existingReservation = await tx.reservation.findFirst({
+        where: { resourceId },
+        select: { id: true },
+      });
+
+      if (existingReservation) {
+        return "blocked" as const;
+      }
+
+      await tx.resource.delete({
+        where: { id: resourceId },
+      });
+
+      return "deleted" as const;
+    });
+  } catch (error: unknown) {
+    if (isForeignKeyViolation(error)) {
+      return "blocked" as const;
+    }
+
+    throw error;
+  }
 }
