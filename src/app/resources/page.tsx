@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { CheckCircle2, Package, Plus, PowerOff } from "lucide-react";
 import { ResourceCard } from "@/app/resources/components/ResourceCard";
+import { ResourceSuccessBanner } from "@/app/resources/components/ResourceSuccessBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -21,9 +22,16 @@ export const metadata: Metadata = {
   description: "Browse and manage shared resources.",
 };
 
-async function AuthenticatedResourcesContent() {
+type ResourcesPageProps = {
+  searchParams: Promise<{ created?: string }>;
+};
+
+async function AuthenticatedResourcesContent({
+  searchParams,
+}: ResourcesPageProps) {
   await requireUser();
 
+  const { created } = await searchParams;
   const resources = await listResources();
 
   const activeCount = resources.filter((resource) => resource.isActive).length;
@@ -54,6 +62,8 @@ async function AuthenticatedResourcesContent() {
               </Link>
             </Button>
           </div>
+
+          {created === "1" && <ResourceSuccessBanner />}
 
           <div className="grid gap-4 sm:grid-cols-3">
             <Card>
@@ -134,7 +144,7 @@ async function AuthenticatedResourcesContent() {
   );
 }
 
-export default function ResourcesPage() {
+export default function ResourcesPage({ searchParams }: ResourcesPageProps) {
   return (
     <Suspense
       fallback={
@@ -146,7 +156,7 @@ export default function ResourcesPage() {
         </main>
       }
     >
-      <AuthenticatedResourcesContent />
+      <AuthenticatedResourcesContent searchParams={searchParams} />
     </Suspense>
   );
 }
