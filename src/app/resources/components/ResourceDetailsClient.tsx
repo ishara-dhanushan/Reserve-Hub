@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  AlertCircle,
   ArrowLeft,
   CalendarDays,
   DoorOpen,
@@ -13,7 +12,6 @@ import {
   RefreshCw,
   UserRound,
   UsersRound,
-  X,
 } from "lucide-react";
 import { ResourceNotFound } from "@/app/resources/components/ResourceNotFound";
 import {

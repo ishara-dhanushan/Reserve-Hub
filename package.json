@@ -15,7 +15,8 @@
     "prisma:migrate:dev": "prisma migrate dev --create-only",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:migrate:status": "prisma migrate status",
-    "test:booking-integrity": "tsx scripts/verify-booking-integrity.ts"
+    "test:booking-integrity": "tsx scripts/verify-booking-integrity.ts",
+    "test:reservation-workflow": "tsx scripts/verify-reservation-workflow.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
