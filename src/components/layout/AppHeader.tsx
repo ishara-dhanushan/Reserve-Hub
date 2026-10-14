@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CalendarDays } from "lucide-react";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 
 const navigation = [
   { label: "Dashboard", href: "/dashboard" },
@@ -34,6 +35,8 @@ export function AppHeader() {
             </Link>
           ))}
         </nav>
+
+        <LogoutButton />
       </div>
     </header>
   );
