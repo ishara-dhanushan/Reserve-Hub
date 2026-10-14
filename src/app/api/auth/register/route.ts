@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
-
 import { hasValidOrigin } from "@/lib/auth/origin";
 import { prisma } from "@/lib/prisma";
 import { registerSchema } from "@/lib/validators/auth";

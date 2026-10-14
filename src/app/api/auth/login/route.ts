@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
-
 import {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE,
