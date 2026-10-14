@@ -8,12 +8,12 @@ import {
   DoorOpen,
   MapPin,
   Monitor,
-  Pencil,
   UserRound,
   UsersRound,
 } from "lucide-react";
 import { z } from "zod";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { ResourceLifecycleControls } from "@/app/resources/components/ResourceLifecycleControls";
 import { ResourceSuccessBanner } from "@/app/resources/components/ResourceSuccessBanner";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +26,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/session";
-import { getResourceById } from "@/lib/services/resources";
+import {
+  getResourceById,
+  hasResourceReservationHistory,
+} from "@/lib/services/resources";
 
 export const metadata: Metadata = {
   title: "Resource Details",
@@ -35,7 +38,11 @@ export const metadata: Metadata = {
 
 type ResourceDetailPageProps = {
   params: Promise<{ resourceId: string }>;
-  searchParams: Promise<{ updated?: string }>;
+  searchParams: Promise<{
+    updated?: string;
+    deactivated?: string;
+    reactivated?: string;
+  }>;
 };
 
 async function AuthenticatedResourceDetails({
@@ -57,8 +64,13 @@ async function AuthenticatedResourceDetails({
     notFound();
   }
 
+  const hasReservationHistory = await hasResourceReservationHistory(
+    resource.id,
+  );
+
   const isMeetingRoom = resource.type === "MEETING_ROOM";
-  const { updated } = await searchParams;
+
+  const { updated, deactivated, reactivated } = await searchParams;
 
   return (
     <ProtectedRoute>
@@ -66,7 +78,7 @@ async function AuthenticatedResourceDetails({
         <AppHeader />
 
         <main className="mx-auto w-full max-w-4xl space-y-6 px-4 py-10 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <Button asChild variant="ghost">
               <Link href="/resources">
                 <ArrowLeft className="size-4" aria-hidden="true" />
@@ -74,15 +86,19 @@ async function AuthenticatedResourceDetails({
               </Link>
             </Button>
 
-            <Button asChild variant="outline">
-              <Link href={`/resources/${resource.id}/edit`}>
-                <Pencil className="size-4" aria-hidden="true" />
-                Edit Resource
-              </Link>
-            </Button>
+            <ResourceLifecycleControls
+              resource={{
+                id: resource.id,
+                name: resource.name,
+                isActive: resource.isActive,
+              }}
+              hasReservationHistory={hasReservationHistory}
+            />
           </div>
 
           {updated === "1" && <ResourceSuccessBanner kind="updated" />}
+          {deactivated === "1" && <ResourceSuccessBanner kind="deactivated" />}
+          {reactivated === "1" && <ResourceSuccessBanner kind="reactivated" />}
 
           <Card>
             <CardHeader className="space-y-4">

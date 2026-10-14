@@ -89,6 +89,19 @@ export async function listResources(): Promise<ResourceWithCreator[]> {
   });
 }
 
+// Check whether a resource has ever been used in a reservation.
+// Includes confirmed, completed and cancelled reservations.
+export async function hasResourceReservationHistory(
+  resourceId: string,
+): Promise<boolean> {
+  const reservation = await prisma.reservation.findFirst({
+    where: { resourceId },
+    select: { id: true },
+  });
+
+  return reservation !== null;
+}
+
 // Retrieve one resource by its unique identifier.
 export async function getResourceById(
   resourceId: string,

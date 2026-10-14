@@ -23,7 +23,10 @@ export const metadata: Metadata = {
 };
 
 type ResourcesPageProps = {
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{
+    created?: string;
+    deleted?: string;
+  }>;
 };
 
 async function AuthenticatedResourcesContent({
@@ -31,7 +34,7 @@ async function AuthenticatedResourcesContent({
 }: ResourcesPageProps) {
   await requireUser();
 
-  const { created } = await searchParams;
+  const { created, deleted } = await searchParams;
   const resources = await listResources();
 
   const activeCount = resources.filter((resource) => resource.isActive).length;
@@ -63,7 +66,8 @@ async function AuthenticatedResourcesContent({
             </Button>
           </div>
 
-          {created === "1" && <ResourceSuccessBanner />}
+          {created === "1" && <ResourceSuccessBanner kind="created" />}
+          {deleted === "1" && <ResourceSuccessBanner kind="deleted" />}
 
           <div className="grid gap-4 sm:grid-cols-3">
             <Card>

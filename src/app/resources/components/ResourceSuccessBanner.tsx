@@ -3,9 +3,23 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 
+type ResourceSuccessKind =
+  "created" | "updated" | "deactivated" | "reactivated" | "deleted";
+
 interface ResourceSuccessBannerProps {
-  kind?: "created" | "updated";
+  kind?: ResourceSuccessKind;
 }
+
+const successMessages: Record<ResourceSuccessKind, string> = {
+  created:
+    "Resource created successfully. It is now available in the shared catalogue.",
+  updated: "Resource updated successfully.",
+  deactivated:
+    "Resource deactivated successfully. Reservation history has been preserved.",
+  reactivated:
+    "Resource reactivated successfully. It is now available for eligible bookings.",
+  deleted: "Resource permanently deleted successfully.",
+};
 
 export function ResourceSuccessBanner({
   kind = "created",
@@ -33,7 +47,7 @@ export function ResourceSuccessBanner({
     }, 7000);
 
     return () => window.clearTimeout(timeout);
-  }, []);
+  }, [kind]);
 
   if (!visible) {
     return null;
@@ -45,11 +59,7 @@ export function ResourceSuccessBanner({
       className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4 text-sm text-success"
     >
       <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" />
-      <p>
-        {kind === "created"
-          ? "Resource created successfully. It is now available in the shared catalogue."
-          : "Resource updated successfully."}
-      </p>
+      <p>{successMessages[kind]}</p>
     </div>
   );
 }
