@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Prisma } from "@/generated/prisma/client";
+import type { ResourceType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import type {
   CreateResourceInput,
@@ -24,6 +25,56 @@ const resourceSelect = {
     },
   },
 } as const satisfies Prisma.ResourceSelect;
+
+type ResourceKey = Pick<CreateResourceInput, "name" | "type" | "location">;
+
+export class DuplicateResourceError extends Error {
+  constructor() {
+    super("A resource with the same name, type, and location already exists.");
+    this.name = "DuplicateResourceError";
+  }
+}
+
+// Lock the normalized resource identity until the transaction ends.
+async function lockResourceKey(
+  tx: Prisma.TransactionClient,
+  key: ResourceKey,
+): Promise<void> {
+  await tx.$queryRaw`
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(
+        concat_ws(
+          chr(31),
+          lower(btrim(${key.name}::text)),
+          ${key.type}::text,
+          lower(btrim(${key.location}::text))
+        ),
+        0
+      )
+    )::text AS "acquired"
+  `;
+}
+
+async function resourceKeyExists(
+  tx: Prisma.TransactionClient,
+  key: ResourceKey,
+  excludedId?: string,
+): Promise<boolean> {
+  const matches = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id"
+    FROM "Resource"
+    WHERE lower(btrim("name")) = lower(btrim(${key.name}::text))
+      AND "type"::text = ${key.type}
+      AND lower(btrim("location")) = lower(btrim(${key.location}::text))
+      AND (
+        ${excludedId ?? null}::uuid IS NULL
+        OR "id" <> ${excludedId ?? null}::uuid
+      )
+    LIMIT 1
+  `;
+
+  return matches.length > 0;
+}
 
 // Infer the result type directly from the Prisma selection.
 export type ResourceWithCreator = Prisma.ResourceGetPayload<{
@@ -69,9 +120,17 @@ export async function createResource(
     },
   } satisfies Prisma.ResourceCreateInput;
 
-  return prisma.resource.create({
-    data,
-    select: resourceSelect,
+  return prisma.$transaction(async (tx) => {
+    await lockResourceKey(tx, input);
+
+    if (await resourceKeyExists(tx, input)) {
+      throw new DuplicateResourceError();
+    }
+
+    return tx.resource.create({
+      data,
+      select: resourceSelect,
+    });
   });
 }
 
@@ -99,19 +158,51 @@ export async function updateResource(
 
   return prisma.$transaction(async (tx) => {
     // Lock the resource while evaluating lifecycle restrictions.
-    const locked = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>`
-      SELECT "id", "isActive"
+    const locked = await tx.$queryRaw<
+      Array<{
+        id: string;
+        name: string;
+        type: ResourceType;
+        location: string;
+        isActive: boolean;
+      }>
+    >`
+      SELECT "id", "name", "type", "location", "isActive"
       FROM "Resource"
       WHERE "id" = ${resourceId}::uuid
       FOR UPDATE
     `;
 
-    if (locked.length === 0) {
+    const existing = locked[0];
+
+    if (!existing) {
       return { status: "not-found" } as const;
     }
 
+    const targetKey = {
+      name: input.name ?? existing.name,
+      type: input.type ?? existing.type,
+      location: input.location ?? existing.location,
+    };
+
+    const keyChanged =
+      existing.name.trim().toLowerCase() !==
+        targetKey.name.trim().toLowerCase() ||
+      existing.type !== targetKey.type ||
+      existing.location.trim().toLowerCase() !==
+        targetKey.location.trim().toLowerCase();
+
+    // Legacy duplicates can still have non-identifying fields edited.
+    if (keyChanged) {
+      await lockResourceKey(tx, targetKey);
+
+      if (await resourceKeyExists(tx, targetKey, resourceId)) {
+        throw new DuplicateResourceError();
+      }
+    }
+
     // Deactivation is blocked by ongoing or future confirmed bookings.
-    if (input.isActive === false && locked[0].isActive) {
+    if (input.isActive === false && existing.isActive) {
       const blockingReservation = await tx.reservation.findFirst({
         where: {
           resourceId,

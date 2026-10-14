@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasValidOrigin } from "@/lib/auth/origin";
-import { listResources, createResource } from "@/lib/services/resources";
+import {
+  listResources,
+  createResource,
+  DuplicateResourceError,
+} from "@/lib/services/resources";
 import { createResourceSchema } from "@/lib/validators/resources";
 
 const noStoreHeaders = {
@@ -79,6 +83,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 201, headers: noStoreHeaders },
     );
   } catch (error: unknown) {
+    if (error instanceof DuplicateResourceError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 409, headers: noStoreHeaders },
+      );
+    }
+
     console.error("Resource creation failed:", error);
 
     return NextResponse.json(

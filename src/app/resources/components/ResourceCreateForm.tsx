@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LoaderCircle, Plus } from "lucide-react";
+import { AlertCircle, LoaderCircle, Plus, X } from "lucide-react";
 import { ResourceType } from "@/generated/prisma/enums";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,10 +32,26 @@ export function ResourceCreateForm() {
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [conflict, setConflict] = useState(false);
+
+  // Automatically dismiss duplicate conflict banners after 7 seconds.
+  useEffect(() => {
+    if (!conflict) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setError("");
+      setConflict(false);
+    }, 7000);
+
+    return () => window.clearTimeout(timeout);
+  }, [conflict]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setConflict(false);
 
     const input: CreateResourceInput = {
       name,
@@ -77,13 +93,19 @@ export function ResourceCreateForm() {
       }
 
       if (!response.ok) {
-        if (response.status === 400) {
+        if (response.status === 409) {
+          setError(
+            "A resource with the same name, type, and location already exists. Please change one of these details.",
+          );
+          setConflict(true);
+        } else if (response.status === 400) {
           setError("Please check the resource details.");
         } else if (response.status === 403) {
           setError("The request could not be authorized.");
         } else {
           setError("Unable to create resource. Please try again.");
         }
+
         return;
       }
 
@@ -111,7 +133,6 @@ export function ResourceCreateForm() {
           disabled={submitting}
         />
       </div>
-
       <div className="space-y-2">
         <Label htmlFor="resource-type">Resource Type</Label>
         <Select
@@ -137,7 +158,6 @@ export function ResourceCreateForm() {
           </SelectContent>
         </Select>
       </div>
-
       <div className="space-y-2">
         <Label htmlFor="resource-location">Location</Label>
         <Input
@@ -151,7 +171,6 @@ export function ResourceCreateForm() {
           disabled={submitting}
         />
       </div>
-
       <div className="space-y-2">
         <Label htmlFor="resource-capacity">Capacity (Optional)</Label>
         <Input
@@ -168,7 +187,6 @@ export function ResourceCreateForm() {
           Enter a positive whole number if applicable.
         </p>
       </div>
-
       <div className="space-y-2">
         <Label htmlFor="resource-description">Description (Optional)</Label>
         <textarea
@@ -185,11 +203,32 @@ export function ResourceCreateForm() {
           {description.length}/500
         </p>
       </div>
-
       {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
+        >
+          <AlertCircle className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="font-semibold">
+              {conflict ? "Duplicate Resource" : "Unable to Save"}
+            </p>
+            <p>{error}</p>
+          </div>
+
+          <button
+            type="button"
+            aria-label="Dismiss error message"
+            onClick={() => {
+              setError("");
+              setConflict(false);
+            }}
+            className="rounded-md p-1 transition-colors hover:bg-destructive/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
       )}
 
       <div className="flex flex-wrap justify-end gap-3 border-t pt-5">

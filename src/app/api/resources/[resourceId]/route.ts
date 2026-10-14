@@ -6,6 +6,7 @@ import {
   getResourceById,
   updateResource,
   deleteResource,
+  DuplicateResourceError,
 } from "@/lib/services/resources";
 import { updateResourceSchema } from "@/lib/validators/resources";
 
@@ -111,6 +112,10 @@ export async function PATCH(
       { headers: noStoreHeaders },
     );
   } catch (error: unknown) {
+    if (error instanceof DuplicateResourceError) {
+      return errorResponse(error.message, 409);
+    }
+
     console.error("Resource update failed:", error);
     return errorResponse("Unable to update resource.", 500);
   }
