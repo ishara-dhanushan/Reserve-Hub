@@ -17,7 +17,7 @@ export default function ResourceNotFound() {
 
       <main className="mx-auto flex max-w-xl items-center px-4 py-20">
         <Card className="w-full">
-          <CardHeader className="items-center text-center">
+          <CardHeader className="flex flex-col items-center text-center">
             <div className="mb-3 flex size-14 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
               <PackageX className="size-7" aria-hidden="true" />
             </div>
