@@ -18,7 +18,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body: unknown = await request.json().catch(() => null);
+  let body: unknown;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON request body." },
+      { status: 400 },
+    );
+  }
+
   const parsed = loginSchema.safeParse(body);
 
   if (!parsed.success) {

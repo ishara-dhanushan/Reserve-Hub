@@ -52,10 +52,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refreshUser()
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
-  }, [refreshUser]);
+    let cancelled = false;
+
+    async function initializeAuth() {
+      try {
+        const response = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+
+        if (response.status === 401) {
+          if (!cancelled) {
+            setUser(null);
+          }
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error("Unable to verify your session.");
+        }
+
+        const data: { user: AuthUser } = await response.json();
+
+        if (!cancelled) {
+          setUser(data.user);
+        }
+      } catch {
+        if (!cancelled) {
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void initializeAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, loading, refreshUser, clearUser }}>
