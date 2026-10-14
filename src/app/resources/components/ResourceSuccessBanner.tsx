@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 
-export function ResourceSuccessBanner() {
+interface ResourceSuccessBannerProps {
+  kind?: "created" | "updated";
+}
+
+export function ResourceSuccessBanner({
+  kind = "created",
+}: ResourceSuccessBannerProps) {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -11,8 +17,8 @@ export function ResourceSuccessBanner() {
     // This prevents the banner from returning after refresh.
     const url = new URL(window.location.href);
 
-    if (url.searchParams.has("created")) {
-      url.searchParams.delete("created");
+    if (url.searchParams.has(kind)) {
+      url.searchParams.delete(kind);
 
       window.history.replaceState(
         window.history.state,
@@ -40,8 +46,9 @@ export function ResourceSuccessBanner() {
     >
       <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" />
       <p>
-        Resource created successfully. It is now available in the shared
-        catalogue.
+        {kind === "created"
+          ? "Resource created successfully. It is now available in the shared catalogue."
+          : "Resource updated successfully."}
       </p>
     </div>
   );

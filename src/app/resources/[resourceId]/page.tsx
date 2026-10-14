@@ -8,11 +8,13 @@ import {
   DoorOpen,
   MapPin,
   Monitor,
+  Pencil,
   UserRound,
   UsersRound,
 } from "lucide-react";
 import { z } from "zod";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { ResourceSuccessBanner } from "@/app/resources/components/ResourceSuccessBanner";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,10 +35,12 @@ export const metadata: Metadata = {
 
 type ResourceDetailPageProps = {
   params: Promise<{ resourceId: string }>;
+  searchParams: Promise<{ updated?: string }>;
 };
 
 async function AuthenticatedResourceDetails({
   params,
+  searchParams,
 }: ResourceDetailPageProps) {
   await requireUser();
 
@@ -54,6 +58,7 @@ async function AuthenticatedResourceDetails({
   }
 
   const isMeetingRoom = resource.type === "MEETING_ROOM";
+  const { updated } = await searchParams;
 
   return (
     <ProtectedRoute>
@@ -61,12 +66,23 @@ async function AuthenticatedResourceDetails({
         <AppHeader />
 
         <main className="mx-auto w-full max-w-4xl space-y-6 px-4 py-10 sm:px-6">
-          <Button asChild variant="ghost">
-            <Link href="/resources">
-              <ArrowLeft className="size-4" aria-hidden="true" />
-              Back to Resources
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button asChild variant="ghost">
+              <Link href="/resources">
+                <ArrowLeft className="size-4" aria-hidden="true" />
+                Back to Resources
+              </Link>
+            </Button>
+
+            <Button asChild variant="outline">
+              <Link href={`/resources/${resource.id}/edit`}>
+                <Pencil className="size-4" aria-hidden="true" />
+                Edit Resource
+              </Link>
+            </Button>
+          </div>
+
+          {updated === "1" && <ResourceSuccessBanner kind="updated" />}
 
           <Card>
             <CardHeader className="space-y-4">
@@ -169,6 +185,7 @@ async function AuthenticatedResourceDetails({
 
 export default function ResourceDetailPage({
   params,
+  searchParams,
 }: ResourceDetailPageProps) {
   return (
     <Suspense
@@ -181,7 +198,10 @@ export default function ResourceDetailPage({
         </main>
       }
     >
-      <AuthenticatedResourceDetails params={params} />
+      <AuthenticatedResourceDetails
+        params={params}
+        searchParams={searchParams}
+      />
     </Suspense>
   );
 }
