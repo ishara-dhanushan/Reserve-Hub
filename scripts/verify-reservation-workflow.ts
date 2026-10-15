@@ -256,14 +256,20 @@ async function makeResource(creatorId: string, active = true) {
   return resource;
 }
 
-async function login(email: string, password: string) {
+async function login(email: string, password: string): Promise<string> {
   const response = await api("/api/auth/login", {
     method: "POST",
     body: { email, password },
   });
+
   await expectStatus(response, 200, `Login ${email}`);
+
   const cookie = response.headers.get("set-cookie")?.split(";")[0];
-  assert.ok(cookie?.startsWith("reservehub_session="));
+
+  if (!cookie?.startsWith("reservehub_session=")) {
+    throw new Error("Login response did not contain a valid session cookie.");
+  }
+
   return cookie;
 }
 
@@ -573,6 +579,547 @@ async function testWorkflow(): Promise<void> {
   assert.equal(offsetBody.reservation.startAt, utcStart);
   assert.equal(offsetBody.reservation.endAt, utcEnd);
   console.log("PASS: UTC instant preserved across +05:30 offset");
+
+  // Verify history, ownership, editing, cancellation, and concurrency.
+  await testReservationManagement(
+    alice.id,
+    alice.name,
+    bob.id,
+    aliceCookie,
+    bobCookie,
+  );
+}
+
+// Verify the reservation history, editing, and cancellation APIs.
+// Reuse the test database, authenticated users, and cleanup from testWorkflow().
+async function testReservationManagement(
+  aliceId: string,
+  aliceName: string,
+  bobId: string,
+  aliceCookie: string,
+  bobCookie: string,
+): Promise<void> {
+  type PublicReservation = {
+    id: string;
+    userId: string;
+    resourceId: string;
+    purpose: string;
+    startAt: string;
+    endAt: string;
+    status: string;
+    creator: Record<string, unknown>;
+    resource: Record<string, unknown>;
+  };
+
+  const room = await makeResource(aliceId);
+  const otherRoom = await makeResource(bobId);
+  const aliceBooking = await db.reservation.create({
+    data: {
+      userId: aliceId,
+      resourceId: room.id,
+      purpose: "Reservation history test",
+      startAt: new Date(at(720)),
+      endAt: new Date(at(780)),
+    },
+  });
+  const bobBooking = await db.reservation.create({
+    data: {
+      userId: bobId,
+      resourceId: otherRoom.id,
+      purpose: "Other user reservation",
+      startAt: new Date(at(720)),
+      endAt: new Date(at(780)),
+    },
+  });
+
+  const detailPath = `/api/reservations/${aliceBooking.id}`;
+  const cancelPath = (id: string) => `/api/reservations/${id}/cancel`;
+
+  // Any authenticated user can view organization-wide reservations.
+  await expectStatus(await api("/api/reservations"), 401, "Anonymous history");
+  const all = await api("/api/reservations", { cookie: bobCookie });
+  await expectStatus(all, 200, "All reservations visible to another user");
+  const allBody = (await all.json()) as { reservations: PublicReservation[] };
+  const visibleAlice = allBody.reservations.find(
+    (reservation) => reservation.id === aliceBooking.id,
+  );
+  assert.ok(visibleAlice);
+  assert.equal(visibleAlice.creator.name, aliceName);
+  assert.equal(visibleAlice.resource.name, room.name);
+  assert.deepEqual(Object.keys(visibleAlice.creator), ["name"]);
+  assert.equal("passwordHash" in visibleAlice, false);
+  assert.equal("email" in visibleAlice.creator, false);
+  assert.ok(allBody.reservations.some((r) => r.id === bobBooking.id));
+
+  const mine = await api("/api/reservations?scope=mine", { cookie: bobCookie });
+  await expectStatus(mine, 200, "Mine filter");
+  const mineBody = (await mine.json()) as { reservations: PublicReservation[] };
+  assert.ok(mineBody.reservations.some((r) => r.id === bobBooking.id));
+  assert.ok(mineBody.reservations.every((r) => r.userId === bobId));
+  await expectStatus(
+    await api("/api/reservations?scope=unknown", { cookie: bobCookie }),
+    400,
+    "Invalid history scope",
+  );
+  await expectStatus(
+    await api("/api/reservations?scope=mine&scope=all", {
+      cookie: bobCookie,
+    }),
+    400,
+    "Duplicate history scope",
+  );
+
+  await expectStatus(
+    await api(detailPath),
+    401,
+    "Anonymous reservation detail",
+  );
+  const detail = await api(detailPath, { cookie: bobCookie });
+  await expectStatus(detail, 200, "Another user can view reservation details");
+  const detailBody = (await detail.json()) as {
+    reservation: PublicReservation;
+  };
+  assert.equal(detailBody.reservation.id, aliceBooking.id);
+  assert.deepEqual(Object.keys(detailBody.reservation.creator), ["name"]);
+  assert.equal("email" in detailBody.reservation.creator, false);
+  assert.equal("passwordHash" in detailBody.reservation.creator, false);
+  await expectStatus(
+    await api(`/api/reservations/${randomUUID()}`, { cookie: aliceCookie }),
+    404,
+    "Missing reservation detail",
+  );
+  await expectStatus(
+    await api("/api/reservations/invalid-id", { cookie: aliceCookie }),
+    400,
+    "Invalid reservation detail ID",
+  );
+
+  // Owner-only edits must be authorized by the API, not just the UI.
+  await expectStatus(
+    await api(detailPath, {
+      method: "PATCH",
+      body: { purpose: "Unauthorized update" },
+    }),
+    401,
+    "Anonymous edit",
+  );
+  await expectStatus(
+    await api(detailPath, {
+      method: "PATCH",
+      cookie: bobCookie,
+      body: { purpose: "Unauthorized update" },
+    }),
+    403,
+    "Non-owner edit",
+  );
+  await expectStatus(
+    await api(detailPath, {
+      method: "PATCH",
+      cookie: aliceCookie,
+      origin: null,
+      body: { purpose: "Missing origin" },
+    }),
+    403,
+    "Edit without Origin",
+  );
+  await expectStatus(
+    await api(`/api/reservations/${randomUUID()}`, {
+      method: "PATCH",
+      cookie: aliceCookie,
+      body: { purpose: "Unknown booking" },
+    }),
+    404,
+    "Edit missing reservation",
+  );
+  await expectStatus(
+    await api("/api/reservations/invalid-id", {
+      method: "PATCH",
+      cookie: aliceCookie,
+      body: { purpose: "Bad identifier" },
+    }),
+    400,
+    "Edit invalid reservation ID",
+  );
+
+  const invalidUpdates: Array<[string, unknown]> = [
+    ["Reject empty update", {}],
+    ["Reject spoofed owner", { userId: bobId }],
+    ["Reject resource reassignment", { resourceId: otherRoom.id }],
+    ["Reject status modification", { status: "CANCELLED" }],
+    ["Reject immutable identifier", { id: randomUUID() }],
+    ["Reject short purpose", { purpose: "x" }],
+    ["Reject timezone-free date", { startAt: at(810).replace("Z", "") }],
+  ];
+  for (const [label, body] of invalidUpdates) {
+    await expectStatus(
+      await api(detailPath, {
+        method: "PATCH",
+        cookie: aliceCookie,
+        body,
+      }),
+      400,
+      label,
+    );
+  }
+  assert.equal(
+    (
+      await db.reservation.findUniqueOrThrow({
+        where: { id: aliceBooking.id },
+      })
+    ).purpose,
+    aliceBooking.purpose,
+  );
+
+  const purposeEdit = await api(detailPath, {
+    method: "PATCH",
+    cookie: aliceCookie,
+    body: { purpose: "Updated meeting purpose" },
+  });
+  await expectStatus(purposeEdit, 200, "Owner updates purpose");
+  const purposeResult = (await purposeEdit.json()) as {
+    reservation: { purpose: string; userId: string; resourceId: string };
+  };
+  assert.equal(purposeResult.reservation.purpose, "Updated meeting purpose");
+  assert.equal(purposeResult.reservation.userId, aliceId);
+  assert.equal(purposeResult.reservation.resourceId, room.id);
+
+  const competitor = await db.reservation.create({
+    data: {
+      userId: bobId,
+      resourceId: room.id,
+      purpose: "Existing overlapping booking",
+      startAt: new Date(at(900)),
+      endAt: new Date(at(960)),
+    },
+  });
+  const reschedule = await api(detailPath, {
+    method: "PATCH",
+    cookie: aliceCookie,
+    body: { startAt: at(810), endAt: at(870) },
+  });
+  await expectStatus(reschedule, 200, "Owner reschedules to a free interval");
+  assert.equal(
+    (
+      await db.reservation.findUniqueOrThrow({
+        where: { id: aliceBooking.id },
+      })
+    ).startAt.toISOString(),
+    at(810),
+  );
+
+  const partialEdit = await api(detailPath, {
+    method: "PATCH",
+    cookie: aliceCookie,
+    body: { endAt: at(850) },
+  });
+  await expectStatus(partialEdit, 200, "Owner edits only end time");
+
+  const beforeConflict = await db.reservation.findUniqueOrThrow({
+    where: { id: aliceBooking.id },
+  });
+  const overlappingEdit = await api(detailPath, {
+    method: "PATCH",
+    cookie: aliceCookie,
+    body: { startAt: at(920), endAt: at(980) },
+  });
+  await expectStatus(overlappingEdit, 409, "Overlapping reschedule rejected");
+  const conflictBody = (await overlappingEdit.json()) as { code: string };
+  assert.equal(conflictBody.code, "RESERVATION_CONFLICT");
+  const afterConflict = await db.reservation.findUniqueOrThrow({
+    where: { id: aliceBooking.id },
+  });
+  assert.deepEqual(afterConflict, beforeConflict);
+  assert.equal(competitor.status, "CONFIRMED");
+
+  await expectStatus(
+    await api(detailPath, {
+      method: "PATCH",
+      cookie: aliceCookie,
+      body: { startAt: at(840), endAt: at(840) },
+    }),
+    400,
+    "Invalid edit interval rejected",
+  );
+  assert.deepEqual(
+    await db.reservation.findUniqueOrThrow({
+      where: { id: aliceBooking.id },
+    }),
+    beforeConflict,
+  );
+
+  // Cancellation preserves the record and makes its interval reusable.
+  const toCancel = await db.reservation.create({
+    data: {
+      userId: aliceId,
+      resourceId: room.id,
+      purpose: "Cancellation history fixture",
+      startAt: new Date(at(1080)),
+      endAt: new Date(at(1140)),
+    },
+  });
+  await expectStatus(
+    await api(cancelPath(toCancel.id), { method: "POST" }),
+    401,
+    "Anonymous cancellation",
+  );
+  await expectStatus(
+    await api(cancelPath(toCancel.id), {
+      method: "POST",
+      cookie: bobCookie,
+    }),
+    403,
+    "Non-owner cancellation",
+  );
+  await expectStatus(
+    await api(cancelPath(toCancel.id), {
+      method: "POST",
+      cookie: aliceCookie,
+      origin: null,
+    }),
+    403,
+    "Cancellation without Origin",
+  );
+  await expectStatus(
+    await api(cancelPath(randomUUID()), {
+      method: "POST",
+      cookie: aliceCookie,
+    }),
+    404,
+    "Cancel unknown reservation",
+  );
+  await expectStatus(
+    await api("/api/reservations/invalid-id/cancel", {
+      method: "POST",
+      cookie: aliceCookie,
+    }),
+    400,
+    "Cancel invalid reservation ID",
+  );
+
+  const cancel = await api(cancelPath(toCancel.id), {
+    method: "POST",
+    cookie: aliceCookie,
+  });
+  await expectStatus(cancel, 200, "Owner cancels future booking");
+  const cancelBody = (await cancel.json()) as {
+    reservation: { id: string; status: string; userId: string };
+  };
+  assert.equal(cancelBody.reservation.id, toCancel.id);
+  assert.equal(cancelBody.reservation.userId, aliceId);
+  assert.equal(cancelBody.reservation.status, "CANCELLED");
+  const cancelled = await db.reservation.findUniqueOrThrow({
+    where: { id: toCancel.id },
+  });
+  assert.equal(cancelled.status, "CANCELLED");
+  assert.equal(cancelled.purpose, toCancel.purpose);
+  assert.equal(cancelled.startAt.getTime(), toCancel.startAt.getTime());
+  assert.equal(cancelled.endAt.getTime(), toCancel.endAt.getTime());
+  await expectStatus(
+    await api(cancelPath(toCancel.id), { method: "POST", cookie: aliceCookie }),
+    409,
+    "Repeated cancellation rejected",
+  );
+  await expectStatus(
+    await api(detailPath, { cookie: aliceCookie }),
+    200,
+    "Edited reservation remains readable",
+  );
+  const cancelledDetail = await api(`/api/reservations/${toCancel.id}`, {
+    cookie: bobCookie,
+  });
+  await expectStatus(
+    cancelledDetail,
+    200,
+    "Cancelled booking remains in history",
+  );
+  assert.equal(
+    ((await cancelledDetail.json()) as { reservation: { status: string } })
+      .reservation.status,
+    "CANCELLED",
+  );
+  const released = await api(availabilityPath(room.id, 1080, 1140), {
+    cookie: bobCookie,
+  });
+  await expectStatus(released, 200, "Cancelled interval availability");
+  assert.deepEqual(await released.json(), { available: true, reason: null });
+  await expectStatus(
+    await api("/api/reservations", {
+      method: "POST",
+      cookie: bobCookie,
+      body: booking(room.id, 1080, 1140),
+    }),
+    201,
+    "Cancelled interval can be booked again",
+  );
+
+  // Derived lifecycle states are read-only once the start time has passed.
+  const now = Date.now();
+  const ineligible = [
+    {
+      label: "Ongoing",
+      startAt: new Date(now - 3600000),
+      endAt: new Date(now + 3600000),
+      status: "CONFIRMED" as const,
+    },
+    {
+      label: "Completed",
+      startAt: new Date(now - 3 * 3600000),
+      endAt: new Date(now - 2 * 3600000),
+      status: "CONFIRMED" as const,
+    },
+    {
+      label: "Cancelled",
+      startAt: new Date(at(1200)),
+      endAt: new Date(at(1260)),
+      status: "CANCELLED" as const,
+    },
+  ];
+  for (const item of ineligible) {
+    const record = await db.reservation.create({
+      data: {
+        userId: aliceId,
+        resourceId: room.id,
+        purpose: `${item.label} mutation fixture`,
+        startAt: item.startAt,
+        endAt: item.endAt,
+        status: item.status,
+      },
+    });
+    await expectStatus(
+      await api(`/api/reservations/${record.id}`, {
+        method: "PATCH",
+        cookie: aliceCookie,
+        body: { purpose: "Forbidden change" },
+      }),
+      409,
+      `${item.label} edit rejected`,
+    );
+    await expectStatus(
+      await api(cancelPath(record.id), {
+        method: "POST",
+        cookie: aliceCookie,
+      }),
+      409,
+      `${item.label} cancellation rejected`,
+    );
+    const unchanged = await db.reservation.findUniqueOrThrow({
+      where: { id: record.id },
+    });
+    assert.equal(unchanged.purpose, record.purpose);
+    assert.equal(unchanged.status, record.status);
+  }
+
+  // Serial transactions must prevent simultaneous cancellations from both winning.
+  for (let round = 0; round < 3; round++) {
+    const raceRoom = await makeResource(aliceId);
+    const record = await db.reservation.create({
+      data: {
+        userId: aliceId,
+        resourceId: raceRoom.id,
+        purpose: "Double cancellation fixture",
+        startAt: new Date(at(1320)),
+        endAt: new Date(at(1380)),
+      },
+    });
+    const [first, second] = await Promise.all([
+      api(cancelPath(record.id), { method: "POST", cookie: aliceCookie }),
+      api(cancelPath(record.id), { method: "POST", cookie: aliceCookie }),
+    ]);
+    assert.deepEqual(
+      [first.status, second.status].sort((a, b) => a - b),
+      [200, 409],
+      `Double cancellation round ${round + 1}`,
+    );
+    assert.equal(
+      (
+        await db.reservation.findUniqueOrThrow({
+          where: { id: record.id },
+        })
+      ).status,
+      "CANCELLED",
+    );
+    console.log(`PASS: Double cancellation race round ${round + 1}`);
+  }
+
+  // Rescheduling and creating an overlapping booking must remain exclusive.
+  for (let round = 0; round < 3; round++) {
+    const raceRoom = await makeResource(aliceId);
+    const record = await db.reservation.create({
+      data: {
+        userId: aliceId,
+        resourceId: raceRoom.id,
+        purpose: "Reschedule/booking race fixture",
+        startAt: new Date(at(1440)),
+        endAt: new Date(at(1500)),
+      },
+    });
+    const [edit, create] = await Promise.all([
+      api(`/api/reservations/${record.id}`, {
+        method: "PATCH",
+        cookie: aliceCookie,
+        body: { startAt: at(1560), endAt: at(1620) },
+      }),
+      api("/api/reservations", {
+        method: "POST",
+        cookie: bobCookie,
+        body: booking(raceRoom.id, 1590, 1650),
+      }),
+    ]);
+    assert.ok(
+      (edit.status === 200 && create.status === 409) ||
+        (edit.status === 409 && create.status === 201),
+      `Unexpected rescheduling/booking race: ${edit.status}/${create.status}`,
+    );
+    assert.equal(
+      await db.reservation.count({
+        where: {
+          resourceId: raceRoom.id,
+          status: "CONFIRMED",
+          startAt: { lt: new Date(at(1650)) },
+          endAt: { gt: new Date(at(1560)) },
+        },
+      }),
+      1,
+    );
+    console.log(`PASS: Rescheduling/booking race round ${round + 1}`);
+  }
+
+  // Editing followed by cancellation can both succeed serially.
+  // If cancellation commits first, the edit must be rejected.
+  for (let round = 0; round < 3; round++) {
+    const raceRoom = await makeResource(aliceId);
+    const record = await db.reservation.create({
+      data: {
+        userId: aliceId,
+        resourceId: raceRoom.id,
+        purpose: "Edit/cancel race fixture",
+        startAt: new Date(at(1740)),
+        endAt: new Date(at(1800)),
+      },
+    });
+    const [edit, cancelResult] = await Promise.all([
+      api(`/api/reservations/${record.id}`, {
+        method: "PATCH",
+        cookie: aliceCookie,
+        body: { purpose: "Updated before cancellation" },
+      }),
+      api(cancelPath(record.id), { method: "POST", cookie: aliceCookie }),
+    ]);
+    assert.equal(cancelResult.status, 200);
+    assert.ok(
+      edit.status === 200 || edit.status === 409,
+      `Unexpected edit/cancel race result: ${edit.status}`,
+    );
+    const current = await db.reservation.findUniqueOrThrow({
+      where: { id: record.id },
+    });
+    assert.equal(current.status, "CANCELLED");
+    assert.equal(
+      current.purpose,
+      edit.status === 200 ? "Updated before cancellation" : record.purpose,
+    );
+    console.log(`PASS: Edit/cancel race round ${round + 1}`);
+  }
 }
 
 async function main(): Promise<void> {
