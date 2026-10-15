@@ -333,12 +333,6 @@ ReserveHub is a focused internship-assessment MVP rather than a multi-organizati
 - Reservation history is intentionally retained, not permanently deleted.
 - Local setup requires valid Neon PostgreSQL credentials and network access to its direct migration connection.
 
-## 15. Demonstration Video
-
-A **3–5-minute demonstration video** is a separate assessment deliverable. The intended walkthrough covers registration/login, resource creation, availability checking, overlapping-booking rejection, reservation history, a second user's view-only access, and creator-only editing/cancellation.
-
-A shareable video link should be provided with the repository and ER diagram in the final assessment submission.
-
 ---
 
 **Source repository:** https://github.com/ishara-dhanushan/Reserve-Hub  
