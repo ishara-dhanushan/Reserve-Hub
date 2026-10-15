@@ -53,6 +53,12 @@ export interface UpdateReservationResult {
   reservation?: ReservationDTO;
 }
 
+// Outcomes handled by the reservation cancellation API.
+export interface CancelReservationResult {
+  status: "cancelled" | "not-found" | "forbidden" | "not-editable";
+  reservation?: ReservationDTO;
+}
+
 // Convert database Date objects into browser-safe ISO strings.
 function toReservationDTO(reservation: ReservationRecord): ReservationDTO {
   return {
@@ -499,4 +505,88 @@ export async function updateReservation(
 
     throw error;
   }
+}
+
+// Cancel a creator-owned future confirmed reservation.
+// Keep the reservation record and release its booked interval.
+export async function cancelReservation(
+  reservationId: string,
+  authenticatedUserId: string,
+): Promise<CancelReservationResult> {
+  // Read the immutable resource ID to maintain the existing lock order.
+  const locator = await prisma.reservation.findUnique({
+    where: { id: reservationId },
+    select: { resourceId: true },
+  });
+
+  if (!locator) {
+    return { status: "not-found" };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    // Lock the resource before locking its reservation.
+    // This matches booking creation, rescheduling, and lifecycle operations.
+    const lockedResources = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "Resource"
+      WHERE "id" = ${locator.resourceId}::uuid
+      FOR UPDATE
+    `;
+
+    if (lockedResources.length === 0) {
+      return { status: "not-found" } as const;
+    }
+
+    // Lock the reservation and read its latest state.
+    const lockedReservations = await tx.$queryRaw<
+      Array<{
+        id: string;
+        userId: string;
+        resourceId: string;
+        status: "CONFIRMED" | "CANCELLED";
+        startAt: Date;
+      }>
+    >`
+      SELECT "id", "userId", "resourceId", "status", "startAt"
+      FROM "Reservation"
+      WHERE "id" = ${reservationId}::uuid
+      FOR UPDATE
+    `;
+
+    const existing = lockedReservations[0];
+
+    if (!existing) {
+      return { status: "not-found" } as const;
+    }
+
+    // Do not proceed if the immutable resource association changed.
+    if (existing.resourceId !== locator.resourceId) {
+      return { status: "not-found" } as const;
+    }
+
+    // Only the original creator may cancel the reservation.
+    if (existing.userId !== authenticatedUserId) {
+      return { status: "forbidden" } as const;
+    }
+
+    // Ongoing, completed, and cancelled reservations are not cancellable.
+    if (
+      existing.status !== "CONFIRMED" ||
+      new Date(existing.startAt).getTime() <= Date.now()
+    ) {
+      return { status: "not-editable" } as const;
+    }
+
+    // Preserve the reservation and change only its stored status.
+    const cancelled = await tx.reservation.update({
+      where: { id: existing.id },
+      data: { status: "CANCELLED" },
+      select: reservationSelect,
+    });
+
+    return {
+      status: "cancelled",
+      reservation: toReservationDTO(cancelled),
+    } as const;
+  });
 }

@@ -70,3 +70,8 @@ export type ReservationDetailResponse = {
 export type UpdateReservationResponse = {
   reservation: ReservationDTO;
 };
+
+// Successful POST /api/reservations/[reservationId]/cancel response.
+export type CancelReservationResponse = {
+  reservation: ReservationDTO;
+};
