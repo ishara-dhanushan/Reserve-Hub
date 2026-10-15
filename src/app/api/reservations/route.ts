@@ -131,6 +131,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     switch (result.status) {
       case "created": {
+        if (!result.reservation) {
+          throw new Error("Reservation creation returned no reservation.");
+        }
+
         const responseBody: CreateReservationResponse = {
           reservation: result.reservation,
         };

@@ -65,3 +65,8 @@ export type ReservationListResponse = {
 export type ReservationDetailResponse = {
   reservation: ReservationWithDetailsDTO;
 };
+
+// Successful PATCH /api/reservations/[reservationId] response.
+export type UpdateReservationResponse = {
+  reservation: ReservationDTO;
+};

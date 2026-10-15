@@ -10,6 +10,7 @@ import type {
 import type {
   AvailabilityQueryInput,
   CreateReservationInput,
+  UpdateReservationInput,
 } from "@/lib/validators/reservations";
 
 // Select only fields that are allowed in the reservation API response.
@@ -29,18 +30,28 @@ type ReservationRecord = Prisma.ReservationGetPayload<{
 }>;
 
 // The API handler converts these outcomes into HTTP responses.
-export type AvailabilityResult =
-  | { status: "not-found" }
-  | {
-      status: "checked";
-      availability: ResourceAvailabilityResponse;
-    };
+export interface AvailabilityResult {
+  status: "checked" | "not-found";
+  availability?: ResourceAvailabilityResponse;
+}
 
-export type CreateReservationResult =
-  | { status: "created"; reservation: ReservationDTO }
-  | {
-      status: "not-found" | "inactive" | "conflict" | "invalid-time";
-    };
+export interface CreateReservationResult {
+  status: "created" | "not-found" | "inactive" | "conflict" | "invalid-time";
+  reservation?: ReservationDTO;
+}
+
+// Outcomes handled by the reservation update API.
+export interface UpdateReservationResult {
+  status:
+    | "updated"
+    | "not-found"
+    | "forbidden"
+    | "not-editable"
+    | "inactive"
+    | "conflict"
+    | "invalid-time";
+  reservation?: ReservationDTO;
+}
 
 // Convert database Date objects into browser-safe ISO strings.
 function toReservationDTO(reservation: ReservationRecord): ReservationDTO {
@@ -327,4 +338,165 @@ export async function getReservationById(
   }
 
   return toReservationWithDetailsDTO(reservation);
+}
+
+// Update the purpose and/or interval of a creator-owned future reservation.
+// All eligibility and conflict checks are performed inside a transaction.
+export async function updateReservation(
+  reservationId: string,
+  input: UpdateReservationInput,
+  authenticatedUserId: string,
+): Promise<UpdateReservationResult> {
+  // Read the immutable resource identifier to establish lock order.
+  // No authorization decision is made from this preliminary read.
+  const locator = await prisma.reservation.findUnique({
+    where: { id: reservationId },
+    select: { resourceId: true },
+  });
+
+  if (!locator) {
+    return { status: "not-found" };
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      // Lock Resource first, matching reservation creation and
+      // resource lifecycle operations.
+      const lockedResources = await tx.$queryRaw<
+        Array<{ id: string; isActive: boolean }>
+      >`
+        SELECT "id", "isActive"
+        FROM "Resource"
+        WHERE "id" = ${locator.resourceId}::uuid
+        FOR UPDATE
+      `;
+
+      const resource = lockedResources[0];
+
+      if (!resource) {
+        return { status: "not-found" } as const;
+      }
+
+      // Lock the reservation after locking its Resource row.
+      // This prevents another compliant mutation from changing
+      // the reservation while eligibility is being checked.
+      const lockedReservations = await tx.$queryRaw<
+        Array<{
+          id: string;
+          userId: string;
+          resourceId: string;
+          status: "CONFIRMED" | "CANCELLED";
+          startAt: Date;
+          endAt: Date;
+        }>
+      >`
+        SELECT
+          "id",
+          "userId",
+          "resourceId",
+          "status",
+          "startAt",
+          "endAt"
+        FROM "Reservation"
+        WHERE "id" = ${reservationId}::uuid
+        FOR UPDATE
+      `;
+
+      const existing = lockedReservations[0];
+
+      if (!existing) {
+        return { status: "not-found" } as const;
+      }
+
+      // The resource association is immutable through ReserveHub APIs.
+      if (existing.resourceId !== resource.id) {
+        return { status: "not-editable" } as const;
+      }
+
+      // Only the authenticated creator may modify this reservation.
+      if (existing.userId !== authenticatedUserId) {
+        return { status: "forbidden" } as const;
+      }
+
+      const now = Date.now();
+      const originalStartAt = new Date(existing.startAt);
+      const originalEndAt = new Date(existing.endAt);
+
+      // The original reservation must still be future and confirmed.
+      // Ongoing, completed, and cancelled records are read-only.
+      if (existing.status !== "CONFIRMED" || originalStartAt.getTime() <= now) {
+        return { status: "not-editable" } as const;
+      }
+
+      // Future confirmed bookings require an active resource.
+      if (!resource.isActive) {
+        return { status: "inactive" } as const;
+      }
+
+      // Retain unchanged values for partial updates.
+      const startAt =
+        input.startAt !== undefined ? new Date(input.startAt) : originalStartAt;
+
+      const endAt =
+        input.endAt !== undefined ? new Date(input.endAt) : originalEndAt;
+
+      // Validate the complete interval after applying supplied changes.
+      if (
+        !Number.isFinite(startAt.getTime()) ||
+        !Number.isFinite(endAt.getTime()) ||
+        startAt.getTime() <= now ||
+        endAt.getTime() <= startAt.getTime()
+      ) {
+        return { status: "invalid-time" } as const;
+      }
+
+      // Exclude the current reservation when checking overlap.
+      // Cancelled reservations do not block an interval.
+      const conflict = await tx.reservation.findFirst({
+        where: {
+          id: { not: existing.id },
+          resourceId: existing.resourceId,
+          status: "CONFIRMED",
+          startAt: { lt: endAt },
+          endAt: { gt: startAt },
+        },
+        select: { id: true },
+      });
+
+      if (conflict) {
+        return { status: "conflict" } as const;
+      }
+
+      // Only mutable fields are included.
+      // Never update userId, resourceId, status, id, or createdAt.
+      const updated = await tx.reservation.update({
+        where: { id: existing.id },
+        data: {
+          ...(input.purpose !== undefined && {
+            purpose: input.purpose,
+          }),
+          ...(input.startAt !== undefined && {
+            startAt,
+          }),
+          ...(input.endAt !== undefined && {
+            endAt,
+          }),
+        },
+        select: reservationSelect,
+      });
+
+      return {
+        status: "updated",
+        reservation: toReservationDTO(updated),
+      } as const;
+    });
+  } catch (error: unknown) {
+    // PostgreSQL remains the final overlap-prevention guarantee.
+    // A failed transaction preserves the original reservation.
+    if (isReservationOverlapError(error)) {
+      return { status: "conflict" };
+    }
+
+    throw error;
+  }
 }
