@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, CalendarCheck } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Plus } from "lucide-react";
 import { Suspense } from "react";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { requireUser } from "@/lib/auth/session";
@@ -28,12 +28,22 @@ async function AuthenticatedReservationsContent() {
         <AppHeader />
 
         <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Reservations
-          </h1>
-          <p className="mt-2 text-muted-foreground">
-            View bookings and manage your reservations.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight">
+                Reservations
+              </h1>
+              <p className="mt-2 text-muted-foreground">
+                Reserve meeting rooms and equipment for future time slots.
+              </p>
+            </div>
+            <Button asChild>
+              <Link href="/reservations/new">
+                <Plus className="size-4" aria-hidden="true" />
+                New Reservation
+              </Link>
+            </Button>
+          </div>
 
           <Card className="mt-8">
             <CardHeader>
@@ -43,11 +53,11 @@ async function AuthenticatedReservationsContent() {
               />
               <CardTitle>Reservation management</CardTitle>
               <CardDescription>
-                Booking lists, availability checks, and reservation actions will
-                be implemented in the upcoming reservation module.
+                You can create confirmed bookings now. The reservation list,
+                details, and owner-only edit/cancel actions will be added in the
+                next reservation management phase.
               </CardDescription>
             </CardHeader>
-
             <CardContent>
               <Button asChild variant="outline">
                 <Link href="/dashboard">

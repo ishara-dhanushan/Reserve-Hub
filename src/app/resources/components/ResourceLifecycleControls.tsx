@@ -1,17 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  AlertCircle,
-  LoaderCircle,
-  Pencil,
-  Power,
-  PowerOff,
-  Trash2,
-  X,
-} from "lucide-react";
+import { LoaderCircle, Pencil, Power, PowerOff, Trash2 } from "lucide-react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,41 +20,32 @@ type LifecycleAction = "deactivate" | "reactivate" | "delete";
 
 type LifecycleResource = Pick<ResourceDTO, "id" | "name" | "isActive">;
 
+export interface ResourceLifecycleFeedback {
+  message: string;
+  conflict: boolean;
+}
+
 interface ResourceLifecycleControlsProps {
   resource: LifecycleResource;
   hasReservationHistory: boolean;
   onStatusChange: (action: "deactivate" | "reactivate") => void;
+  onFeedbackChange: (feedback: ResourceLifecycleFeedback | null) => void;
 }
 
 export function ResourceLifecycleControls({
   resource,
   hasReservationHistory,
   onStatusChange,
+  onFeedbackChange,
 }: ResourceLifecycleControlsProps) {
   const router = useRouter();
 
   const [action, setAction] = useState<LifecycleAction | null>(null);
   const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState<{
-    message: string;
-    conflict: boolean;
-  } | null>(null);
-
-  // Dismiss conflict messages after seven seconds.
-  useEffect(() => {
-    if (!feedback?.conflict) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setFeedback(null);
-    }, 7000);
-
-    return () => window.clearTimeout(timeout);
-  }, [feedback]);
 
   function openConfirmation(nextAction: LifecycleAction) {
-    setFeedback(null);
+    // Clear previous feedback when beginning another action.
+    onFeedbackChange(null);
     setAction(nextAction);
   }
 
@@ -73,7 +56,7 @@ export function ResourceLifecycleControls({
 
     const selectedAction = action;
     setBusy(true);
-    setFeedback(null);
+    onFeedbackChange(null);
 
     try {
       const response = await fetch(
@@ -113,7 +96,7 @@ export function ResourceLifecycleControls({
 
         const parsedError = z.object({ error: z.string() }).safeParse(body);
 
-        setFeedback({
+        onFeedbackChange({
           message: parsedError.success
             ? parsedError.data.error
             : "Unable to complete the requested action.",
@@ -135,7 +118,8 @@ export function ResourceLifecycleControls({
       onStatusChange(selectedAction);
     } catch {
       setAction(null);
-      setFeedback({
+
+      onFeedbackChange({
         message: "Unable to connect to the server. Please try again.",
         conflict: false,
       });
@@ -209,32 +193,6 @@ export function ResourceLifecycleControls({
           Permanent deletion is unavailable because this resource has
           reservation history.
         </p>
-      )}
-
-      {feedback && (
-        <div
-          role="alert"
-          className="flex w-full max-w-md items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
-        >
-          <AlertCircle className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
-
-          <div className="min-w-0 flex-1 space-y-1">
-            <p className="font-semibold">
-              {feedback.conflict ? "Resource Conflict" : "Action Failed"}
-            </p>
-            <p>{feedback.message}</p>
-          </div>
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Dismiss error"
-            onClick={() => setFeedback(null)}
-          >
-            <X className="size-4" aria-hidden="true" />
-          </Button>
-        </div>
       )}
 
       <Dialog

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { ResourceFeedbackBanner } from "@/app/resources/components/ResourceFeedbackBanner";
 
 type ResourceSuccessKind =
   "created" | "updated" | "deactivated" | "reactivated" | "deleted";
@@ -54,12 +54,6 @@ export function ResourceSuccessBanner({
   }
 
   return (
-    <div
-      role="status"
-      className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4 text-sm text-success"
-    >
-      <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" />
-      <p>{successMessages[kind]}</p>
-    </div>
+    <ResourceFeedbackBanner variant="success" message={successMessages[kind]} />
   );
 }
