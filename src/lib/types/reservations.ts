@@ -1,4 +1,4 @@
-import type { ReservationStatus } from "@/generated/prisma/enums";
+import type { ReservationStatus, ResourceType } from "@/generated/prisma/enums";
 
 /**
  * JSON representation of a reservation returned by the API.
@@ -38,4 +38,40 @@ export type CreateReservationResponse = {
 export type ReservationErrorResponse = {
   error: string;
   code?: string;
+};
+
+/**
+ * Public reservation information for history and detail views.
+ * Nested user data contains only the creator's display name.
+ */
+export type ReservationWithDetailsDTO = ReservationDTO & {
+  creator: {
+    name: string;
+  };
+  resource: {
+    name: string;
+    type: ResourceType;
+    location: string;
+    isActive: boolean;
+  };
+};
+
+/** GET /api/reservations response. */
+export type ReservationListResponse = {
+  reservations: ReservationWithDetailsDTO[];
+};
+
+/** GET /api/reservations/[reservationId] response. */
+export type ReservationDetailResponse = {
+  reservation: ReservationWithDetailsDTO;
+};
+
+// Successful PATCH /api/reservations/[reservationId] response.
+export type UpdateReservationResponse = {
+  reservation: ReservationDTO;
+};
+
+// Successful POST /api/reservations/[reservationId]/cancel response.
+export type CancelReservationResponse = {
+  reservation: ReservationDTO;
 };

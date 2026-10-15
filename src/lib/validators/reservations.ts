@@ -69,3 +69,24 @@ export const createReservationSchema = z
   .superRefine(validateFutureInterval);
 
 export type CreateReservationInput = z.infer<typeof createReservationSchema>;
+
+// PATCH /api/reservations/[reservationId]
+// Only purpose and interval can be updated; other fields are immutable.
+// Supports partial updates; single timestamps are validated against existing values.
+export const updateReservationSchema = z
+  .strictObject({
+    purpose: z.string().trim().min(3).max(200).optional(),
+    startAt: reservationDateTimeSchema.optional(),
+    endAt: reservationDateTimeSchema.optional(),
+  })
+  .refine(
+    (input) =>
+      input.purpose !== undefined ||
+      input.startAt !== undefined ||
+      input.endAt !== undefined,
+    {
+      message: "Provide at least one reservation field to update.",
+    },
+  );
+
+export type UpdateReservationInput = z.infer<typeof updateReservationSchema>;

@@ -86,6 +86,10 @@ export async function GET(
       return errorResponse("Resource not found.", 404, "RESOURCE_NOT_FOUND");
     }
 
+    if (!result.availability) {
+      throw new Error("Availability check returned no result.");
+    }
+
     // The availability result is advisory; POST validates again.
     return NextResponse.json(result.availability, {
       status: 200,
