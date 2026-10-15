@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type {
   ReservationDTO,
+  ReservationWithDetailsDTO,
   ResourceAvailabilityResponse,
 } from "@/lib/types/reservations";
 import type {
@@ -52,6 +53,47 @@ function toReservationDTO(reservation: ReservationRecord): ReservationDTO {
     endAt: reservation.endAt.toISOString(),
     status: reservation.status,
     createdAt: reservation.createdAt.toISOString(),
+  };
+}
+
+// Select only the fields required by reservation history and details.
+// Never fetch User.passwordHash or User.email for booking views.
+const reservationWithDetailsSelect = {
+  ...reservationSelect,
+  user: {
+    select: {
+      name: true,
+    },
+  },
+  resource: {
+    select: {
+      name: true,
+      type: true,
+      location: true,
+      isActive: true,
+    },
+  },
+} as const satisfies Prisma.ReservationSelect;
+
+type ReservationWithDetailsRecord = Prisma.ReservationGetPayload<{
+  select: typeof reservationWithDetailsSelect;
+}>;
+
+// Serialize the selected database record into a public API response.
+function toReservationWithDetailsDTO(
+  reservation: ReservationWithDetailsRecord,
+): ReservationWithDetailsDTO {
+  return {
+    ...toReservationDTO(reservation),
+    creator: {
+      name: reservation.user.name,
+    },
+    resource: {
+      name: reservation.resource.name,
+      type: reservation.resource.type,
+      location: reservation.resource.location,
+      isActive: reservation.resource.isActive,
+    },
   };
 }
 
@@ -250,4 +292,39 @@ export async function createReservation(
     // Step 3 will log them server-side and return a sanitized HTTP 500.
     throw error;
   }
+}
+
+// List reservation history for authenticated users.
+// By default, every reservation is visible, regardless of creator.
+// The optional "mine" scope filters by the authenticated user's ID.
+export async function listReservations(
+  scope: "all" | "mine",
+  authenticatedUserId: string,
+): Promise<ReservationWithDetailsDTO[]> {
+  const reservations = await prisma.reservation.findMany({
+    where: scope === "mine" ? { userId: authenticatedUserId } : undefined,
+    select: reservationWithDetailsSelect,
+    orderBy: [{ startAt: "desc" }, { id: "asc" }],
+  });
+
+  return reservations.map(toReservationWithDetailsDTO);
+}
+
+// Retrieve a single reservation with safe creator and resource details.
+// Ownership restrictions apply to mutations, not read operations.
+export async function getReservationById(
+  reservationId: string,
+): Promise<ReservationWithDetailsDTO | null> {
+  const reservation = await prisma.reservation.findUnique({
+    where: {
+      id: reservationId,
+    },
+    select: reservationWithDetailsSelect,
+  });
+
+  if (!reservation) {
+    return null;
+  }
+
+  return toReservationWithDetailsDTO(reservation);
 }

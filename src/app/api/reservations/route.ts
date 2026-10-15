@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasValidOrigin } from "@/lib/auth/origin";
-import { createReservation } from "@/lib/services/reservations";
+import {
+  createReservation,
+  listReservations,
+} from "@/lib/services/reservations";
 import type {
   CreateReservationResponse,
   ReservationErrorResponse,
+  ReservationListResponse,
 } from "@/lib/types/reservations";
 import { createReservationSchema } from "@/lib/validators/reservations";
 
@@ -27,6 +31,59 @@ function errorResponse(
     status,
     headers: noStoreHeaders,
   });
+}
+
+// GET /api/reservations
+// Returns all reservations by default, with an optional current-user filter.
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  try {
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return errorResponse("Authentication required.", 401, "AUTH_REQUIRED");
+    }
+
+    const searchParams = request.nextUrl.searchParams;
+    const scopeValues = searchParams.getAll("scope");
+
+    // Reject unsupported and duplicate query parameters.
+    const hasUnexpectedParameters = Array.from(searchParams.keys()).some(
+      (key) => key !== "scope",
+    );
+
+    if (hasUnexpectedParameters || scopeValues.length > 1) {
+      return errorResponse(
+        "Invalid reservation list query.",
+        400,
+        "INVALID_QUERY",
+      );
+    }
+
+    const scope = scopeValues[0] ?? "all";
+
+    if (scope !== "all" && scope !== "mine") {
+      return errorResponse("Scope must be all or mine.", 400, "INVALID_SCOPE");
+    }
+
+    const reservations = await listReservations(scope, user.id);
+
+    const body: ReservationListResponse = {
+      reservations,
+    };
+
+    return NextResponse.json(body, {
+      status: 200,
+      headers: noStoreHeaders,
+    });
+  } catch (error: unknown) {
+    console.error("Failed to retrieve reservations:", error);
+
+    return errorResponse(
+      "Unable to retrieve reservations.",
+      500,
+      "RESERVATION_LIST_FAILED",
+    );
+  }
 }
 
 // POST /api/reservations
