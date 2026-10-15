@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarCheck2, LoaderCircle, RefreshCw } from "lucide-react";
@@ -87,6 +93,27 @@ export function ReservationCreateForm({
   const [formError, setFormError] = useState("");
   const [confirmed, setConfirmed] = useState<ReservationDTO | null>(null);
   const [now, setNow] = useState<number | null>(null);
+
+  // Clear the previous booking when starting a new reservation.
+  const resetForm = useCallback(() => {
+    setResourceId(initialResourceId ?? "");
+    setPurpose("");
+    setStartLocal("");
+    setEndLocal("");
+    setChecked(null);
+    setCheckError(null);
+    setCheckingKey(null);
+    setFormError("");
+    setConfirmed(null);
+  }, [initialResourceId]);
+
+  // Next.js preserves page state across navigation.
+  // Reset the form when this page becomes hidden.
+  useLayoutEffect(() => {
+    return () => {
+      resetForm();
+    };
+  }, [resetForm]);
 
   // Keep future-interval validation current without reading the clock during render.
   useEffect(() => {
@@ -388,17 +415,7 @@ export function ReservationCreateForm({
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button
-            type="button"
-            onClick={() => {
-              setConfirmed(null);
-              setPurpose("");
-              setStartLocal("");
-              setEndLocal("");
-              setFormError("");
-              setChecked(null);
-            }}
-          >
+          <Button type="button" onClick={resetForm}>
             Book another time
           </Button>
           <Button asChild variant="outline">
