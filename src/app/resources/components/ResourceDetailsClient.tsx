@@ -223,6 +223,20 @@ export function ResourceDetailsClient({
           />
         </div>
 
+        {/* Allow direct booking only when the resource is active. */}
+        {resource.isActive && (
+          <div className="flex justify-end">
+            <Button asChild>
+              <Link
+                href={`/reservations/new?resourceId=${encodeURIComponent(resource.id)}`}
+              >
+                <CalendarDays className="size-4" aria-hidden="true" />
+                Reserve This Resource
+              </Link>
+            </Button>
+          </div>
+        )}
+
         {lifecycleFeedback && (
           <ResourceFeedbackBanner
             variant="error"
